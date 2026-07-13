@@ -10,7 +10,6 @@ const s = {
   dot:        { width:5, height:5, borderRadius:'50%', background:'var(--green)', display:'inline-block' },
   item:       { padding:'10px 14px', cursor:'pointer', borderBottom:'.5px solid var(--border)', transition:'background .1s', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 },
   itemHov:    { background:'var(--green-l)' },
-  itemLeft:   { flex:1, minWidth:0 },
   itemName:   { fontSize:14, fontWeight:500, color:'var(--text)' },
   itemIngs:   { fontSize:11, color:'var(--text3)', marginTop:2 },
   aiLabel:    { fontSize:10, background:'var(--green-l)', color:'var(--green)', borderRadius:4, padding:'1px 5px', marginLeft:5, flexShrink:0 },
@@ -34,6 +33,7 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
   const [hoverId,     setHoverId]     = useState(null)
   const timerRef         = useRef(null)
   const dropdownTouched  = useRef(false)  // iOSキーボード最小化対策
+  const isComposing      = useRef(false)  // IME変換中フラグ（日本語入力対策）
 
   useEffect(() => { setQuery(value || '') }, [value])
 
@@ -46,6 +46,8 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
 
     const geminiKey = localStorage.getItem('geminiKey') || ''
     if (!geminiKey) return
+    // IME変換中はGemini呼び出しをスキップ
+    if (isComposing.current) return
 
     clearTimeout(timerRef.current)
     setAiLoading(true)
@@ -86,6 +88,13 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
         style={{ ...s.input, ...(focused ? s.inputFocus : {}) }}
         value={query}
         onChange={e => { setQuery(e.target.value); onChange?.(e.target.value) }}
+        onCompositionStart={() => { isComposing.current = true }}
+        onCompositionEnd={e => {
+          isComposing.current = false
+          // 確定後に再トリガー（useEffectがcomposing中をスキップしているため）
+          setQuery(e.target.value + ' ')
+          setTimeout(() => setQuery(e.target.value), 0)
+        }}
         onFocus={() => setFocused(true)}
         onBlur={() => {
               // iOSのキーボード最小化対応:
@@ -125,7 +134,7 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
                   onMouseDown={() => handleSelect(r)}
                   onTouchEnd={e => { e.preventDefault(); handleSelect(r) }}
                 >
-                  <div style={s.itemLeft}>
+                  <div style={{flex:1, minWidth:0}}>
                     <div style={s.itemName}>
                       {r.name}
                       {r.fromAI && <span style={s.aiLabel}>✨ AI</span>}
