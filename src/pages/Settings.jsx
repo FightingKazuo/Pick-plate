@@ -4,33 +4,46 @@ import { DEFAULT_TEMPLATES } from './MealPlan'
 import { DEFAULT_STAPLES } from '../App'
 
 
-// 非表示レシピ管理コンポーネント（localStorageで管理）
-function HiddenRecipes() {
-  const [hidden, setHidden] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('hiddenRecipes') || '[]') } catch { return [] }
+// 料理ごとの除外食材管理
+function ExclusionManager() {
+  const [exc, setExc] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('mealExclusions') || '{}') } catch { return {} }
   })
-  const remove = (name) => {
-    const next = hidden.filter(h => h !== name)
-    localStorage.setItem('hiddenRecipes', JSON.stringify(next))
-    setHidden(next)
+  const entries = Object.entries(exc).filter(([,ings]) => ings.length > 0)
+
+  const removeIng = (meal, ing) => {
+    const next = { ...exc, [meal]: exc[meal].filter(x => x !== ing) }
+    if (next[meal].length === 0) delete next[meal]
+    localStorage.setItem('mealExclusions', JSON.stringify(next))
+    setExc({ ...next })
   }
   const clearAll = () => {
-    if (!confirm('出さない料理リストをリセットしますか？')) return
-    localStorage.setItem('hiddenRecipes', '[]')
-    setHidden([])
+    if (!confirm('除外食材の記録をすべてリセットしますか？')) return
+    localStorage.setItem('mealExclusions', '{}')
+    setExc({})
   }
-  if (hidden.length === 0) return <div style={{fontSize:12, color:'var(--text3)'}}>まだ登録はありません。サジェストで「出さない」を押すと追加されます。</div>
+
+  if (entries.length === 0) return (
+    <div style={{fontSize:12, color:'var(--text3)'}}>
+      まだ記録はありません。献立で料理を選んで食材をタップすると除外が記録されます。
+    </div>
+  )
   return (
     <div>
-      <div style={{display:'flex', flexWrap:'wrap', gap:5, marginBottom:10}}>
-        {hidden.map(name => (
-          <span key={name} style={{fontSize:12, padding:'4px 10px', borderRadius:20, background:'var(--red-l)', color:'var(--red)', display:'flex', alignItems:'center', gap:4}}>
-            {name}
-            <span style={{cursor:'pointer', fontSize:13, lineHeight:1}} onClick={() => remove(name)}>×</span>
-          </span>
-        ))}
-      </div>
-      <button style={{fontSize:12, padding:'6px 12px', border:'.5px solid var(--border2)', borderRadius:'var(--rs)', background:'none', cursor:'pointer', color:'var(--text2)'}} onClick={clearAll}>
+      {entries.map(([meal, ings]) => (
+        <div key={meal} style={{marginBottom:10}}>
+          <div style={{fontSize:12, fontWeight:500, marginBottom:5}}>🍽 {meal}</div>
+          <div style={{display:'flex', flexWrap:'wrap', gap:4}}>
+            {ings.map(ing => (
+              <span key={ing} style={{fontSize:12, padding:'3px 9px', borderRadius:20, background:'var(--red-l)', color:'var(--red)', display:'flex', alignItems:'center', gap:3}}>
+                {ing}
+                <span style={{cursor:'pointer', fontSize:13, lineHeight:1}} onClick={() => removeIng(meal, ing)}>×</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+      <button style={{fontSize:12, padding:'6px 12px', border:'.5px solid var(--border2)', borderRadius:'var(--rs)', background:'none', cursor:'pointer', color:'var(--text2)', marginTop:4}} onClick={clearAll}>
         すべてリセット
       </button>
     </div>
@@ -196,8 +209,8 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
       {/* ── 非表示レシピ管理 ── */}
       <div style={s.sec}>出さない料理リスト（学習データ）</div>
       <div style={s.card}>
-        <label style={s.label}>サジェストで「出さない」を押した料理の一覧です。このデバイスのみに保存されます。</label>
-        <HiddenRecipes />
+        <label style={s.label}>献立で料理の食材をタップして除外した記録です。次回同じ料理を選んだとき自動で除外されます。このデバイスのみに保存されます。</label>
+        <ExclusionManager />
       </div>
 
       {msg && <div style={{ background: 'var(--green-l)', color: 'var(--green)', borderRadius: 'var(--rs)', padding: '10px 14px', fontSize: 13, marginTop: 10 }}>{msg}</div>}
