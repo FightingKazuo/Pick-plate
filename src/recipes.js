@@ -110,41 +110,111 @@ export function searchRecipes(keyword) {
   ).slice(0, 8)
 }
 
-// Gemini APIでレシピサジェスト
+// ============================================================
+// Gemini APIでレシピサジェスト（家計簿アプリ geminiOcr.js v8 準拠）
+// ・複数モデルへのフォールバック
+// ・401時の認証方式切り替え
+// ・429 Quota超過時は次モデルへ
+// ・40秒タイムアウト
+// ============================================================
+
+const GEMINI_ENDPOINTS = [
+  { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-2.5-flash'      },
+  { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-2.5-flash-lite' },
+  { base: 'https://generativelanguage.googleapis.com/v1/models',     model: 'gemini-2.5-flash'      },
+  { base: 'https://generativelanguage.googleapis.com/v1/models',     model: 'gemini-2.5-flash-lite' },
+]
+
+const fetchWithTimeout = (url, options) =>
+  Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 40000)),
+  ])
+
 export async function fetchGeminiSuggestions(keyword, apiKey) {
   if (!apiKey || !keyword) return []
 
   const prompt = `日本の家庭料理のサジェストをしてください。
 「${keyword}」を使った、または「${keyword}」という名前を含む料理を8品提案してください。
-必ずJSON配列のみで返答し、前後に説明文・コードブロック記号（バッククォート等）は絶対に含めないこと。
+必ずJSON配列のみで返答し、前後に説明文・コードブロック記号は絶対に含めないこと。
 形式: [{"name":"料理名","ings":["主な食材1","食材2","食材3"]}]`
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 800 }
-      })
-    }
-  )
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.4, maxOutputTokens: 800 },
+  })
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `HTTP ${res.status}`)
+  const errors = []
+
+  for (const { base, model } of GEMINI_ENDPOINTS) {
+    const urlParam  = `${base}/${model}:generateContent?key=${apiKey}`
+    const urlBearer = `${base}/${model}:generateContent`
+    const attempts  = [
+      { url: urlParam,  headers: { 'Content-Type': 'application/json' } },
+      { url: urlBearer, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` } },
+    ]
+
+    let res = null
+    for (const attempt of attempts) {
+      try {
+        const r = await fetchWithTimeout(attempt.url, { method: 'POST', headers: attempt.headers, body })
+        if (r.status === 401) continue
+        res = r
+        break
+      } catch (e) {
+        if (e.message === 'TIMEOUT') throw new Error('⏱ タイムアウト（40秒）\nGeminiに接続できません。')
+        throw new Error(`ネットワークエラー: ${e.message}`)
+      }
+    }
+
+    if (!res) { errors.push(`${model}: 認証失敗(401)`); continue }
+
+    // 429: Quota超過なら次モデルへ、レート制限ならエラー
+    if (res.status === 429) {
+      let isQuota = false
+      try {
+        const errBody = await res.json()
+        const status  = errBody?.error?.status || ''
+        const msg     = errBody?.error?.message || ''
+        isQuota = status === 'RESOURCE_EXHAUSTED' || msg.toLowerCase().includes('quota')
+      } catch {}
+      if (isQuota) { errors.push(`${model}(429 QUOTA): 次のモデルへ`); continue }
+      throw new Error('⚠️ レート上限（429）\n1〜2分待ってから再試行してください。')
+    }
+
+    if (res.status === 404) { errors.push(`${model}(404): not found`); continue }
+
+    if (res.status === 400) {
+      const err = await res.json().catch(() => ({}))
+      const msg = err?.error?.message || ''
+      if (msg.includes('API_KEY') || msg.includes('key')) {
+        throw new Error(`❌ APIキーエラー\n設定タブでAPIキーを確認してください。`)
+      }
+      errors.push(`${model}(400): ${msg.slice(0, 50)}`); continue
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      errors.push(`${model}(${res.status}): ${(err?.error?.message || '').slice(0, 50)}`); continue
+    }
+
+    // 成功
+    const data = await res.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!text) { errors.push(`${model}: 応答が空`); continue }
+
+    // JSON配列を抽出
+    const arrMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
+    const clean    = arrMatch ? arrMatch[0] : text.replace(/```json|```/g, '').trim()
+    try {
+      const parsed = JSON.parse(clean)
+      if (!Array.isArray(parsed)) { errors.push(`${model}: 配列でない`); continue }
+      return parsed.filter(r => r.name && typeof r.name === 'string')
+    } catch {
+      errors.push(`${model}: JSON解析失敗`); continue
+    }
   }
 
-  const data = await res.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-  // JSONブロックを抽出（```json ... ``` や ``` ... ``` に対応）
-  const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
-  const clean = jsonMatch ? jsonMatch[0] : text.replace(/```json|```/g, '').trim()
-
-  const parsed = JSON.parse(clean)
-  // 配列であることを確認
-  if (!Array.isArray(parsed)) throw new Error('Not an array')
-  return parsed.filter(r => r.name && typeof r.name === 'string')
+  // 全モデル失敗
+  throw new Error(`Gemini APIエラー\n${errors.map(e => `・${e}`).join('\n')}`)
 }
