@@ -14,7 +14,6 @@ const s = {
   itemName:   { fontSize:14, fontWeight:500, color:'var(--text)' },
   itemIngs:   { fontSize:11, color:'var(--text3)', marginTop:2 },
   aiLabel:    { fontSize:10, background:'var(--green-l)', color:'var(--green)', borderRadius:4, padding:'1px 5px', marginLeft:5, flexShrink:0 },
-  hideBtn:    { fontSize:11, color:'var(--text3)', padding:'2px 6px', borderRadius:4, border:'.5px solid var(--border)', background:'none', cursor:'pointer', flexShrink:0, alignSelf:'center', whiteSpace:'nowrap' },
   noResult:   { padding:'10px 14px', fontSize:12, color:'var(--text3)' },
   errRow:     { padding:'9px 14px', fontSize:11, color:'var(--red)', background:'var(--red-l)' },
 }
@@ -24,15 +23,6 @@ if (typeof document !== 'undefined' && !document.getElementById('pp-anim')) {
   st.id = 'pp-anim'
   st.textContent = '@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}'
   document.head.appendChild(st)
-}
-
-// 除外リスト取得（localStorageから）
-function getHidden() {
-  try { return JSON.parse(localStorage.getItem('hiddenRecipes') || '[]') } catch { return [] }
-}
-function addHidden(name) {
-  const list = getHidden()
-  if (!list.includes(name)) localStorage.setItem('hiddenRecipes', JSON.stringify([...list, name]))
 }
 
 export default function RecipeSuggest({ value, onChange, onSelect, placeholder }) {
@@ -51,9 +41,7 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
     setAiError('')
     if (!query || query.length < 1) { setSuggestions([]); setAiLoading(false); return }
 
-    const hidden = getHidden()
-    // ローカルDB即時表示（除外リスト除く）
-    const local = searchRecipes(query).filter(r => !hidden.includes(r.name))
+    const local = searchRecipes(query)
     setSuggestions(local)
 
     const geminiKey = localStorage.getItem('geminiKey') || ''
@@ -64,13 +52,10 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
     timerRef.current = setTimeout(async () => {
       try {
         const ai = await fetchGeminiSuggestions(query, geminiKey)
-        const hidden2    = getHidden() // 再取得（非同期なのでタイムラグ対策）
         const localNames = new Set(local.map(r => r.name))
         const merged = [
           ...local,
-          ...ai
-            .filter(r => !localNames.has(r.name) && !hidden2.includes(r.name))
-            .map(r => ({ ...r, fromAI:true }))
+          ...ai.filter(r => !localNames.has(r.name)).map(r => ({ ...r, fromAI:true }))
         ]
         setSuggestions(merged)
       } catch(e) {
@@ -92,12 +77,6 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
     setFocused(false)
     setAiLoading(false)
   }, [onChange, onSelect])
-
-  const handleHide = useCallback((e, name) => {
-    e.stopPropagation()
-    addHidden(name)
-    setSuggestions(prev => prev.filter(r => r.name !== name))
-  }, [])
 
   const showDropdown = focused && (suggestions.length > 0 || aiLoading || aiError)
 
@@ -155,16 +134,7 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
                       <div style={s.itemIngs}>{r.ings.slice(0,5).join('・')}</div>
                     )}
                   </div>
-                  {/* 「出さない」ボタン */}
-                  <button
-                    style={s.hideBtn}
-                    onMouseDown={e => e.stopPropagation()}
-                    onTouchEnd={e => { e.stopPropagation(); handleHide(e, r.name) }}
-                    onClick={e => handleHide(e, r.name)}
-                    title="この料理を今後表示しない"
-                  >
-                    出さない
-                  </button>
+
                 </div>
               ))
           }
