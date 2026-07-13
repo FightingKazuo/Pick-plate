@@ -1,0 +1,42 @@
+:root {
+  --bg: #FAFAF7;
+  --surface: #FFFFFF;
+  --surface2: #F4F3EE;
+  --border: #E5E3DC;
+  --border2: #D0CEC5;
+  --text: #1A1917;
+  --text2: #6B6860;
+  --text3: #A8A69F;
+  --green: #2D6A4F;
+  --green-l: #E8F5EE;
+  --green-d: #1E4D38;
+  --red: #B5533C;
+  --red-l: #FAEEE9;
+  --amber: #8B6914;
+  --amber-l: #FDF3DC;
+  --r: 12px;
+  --rs: 8px;
+  --sh: 0 1px 3px rgba(0,0,0,.08), 0 0 0 .5px rgba(0,0,0,.06);
+  --sh2: 0 4px 20px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.06);
+  --font: 'Noto Sans JP', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button { cursor: pointer; font-family: var(--font); }
+input, textarea, select { font-family: var(--font); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
