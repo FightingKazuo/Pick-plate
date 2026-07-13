@@ -1,119 +1,159 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
 
 const s = {
-  wrap: { position: 'relative' },
-  input: {
-    width: '100%', padding: '10px 12px',
-    border: '.5px solid var(--border2)', borderRadius: 'var(--rs)',
-    fontSize: 14, background: 'var(--surface)', color: 'var(--text)',
-    outline: 'none', transition: 'border-color .15s',
-  },
-  inputFocus: { borderColor: 'var(--green)' },
-  dropdown: {
-    position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-    background: 'var(--surface)', border: '.5px solid var(--border)',
-    borderRadius: 'var(--r)', boxShadow: 'var(--sh2)',
-    zIndex: 50, overflow: 'hidden', maxHeight: 280, overflowY: 'auto',
-  },
-  item: {
-    padding: '10px 14px', cursor: 'pointer',
-    borderBottom: '.5px solid var(--border)',
-    transition: 'background .1s',
-  },
-  itemHover: { background: 'var(--green-l)' },
-  itemName: { fontSize: 14, fontWeight: 500, color: 'var(--text)' },
-  itemIngs: { fontSize: 11, color: 'var(--text3)', marginTop: 2 },
-  loading: { padding: '10px 14px', fontSize: 12, color: 'var(--text3)' },
-  aiLabel: {
-    fontSize: 10, background: 'var(--green-l)', color: 'var(--green)',
-    borderRadius: 4, padding: '1px 5px', marginLeft: 6,
-  },
+  wrap:       { position:'relative' },
+  input:      { width:'100%', padding:'10px 12px', border:'.5px solid var(--border2)', borderRadius:'var(--rs)', fontSize:14, background:'var(--surface)', color:'var(--text)', outline:'none', transition:'border-color .15s' },
+  inputFocus: { borderColor:'var(--green)' },
+  dropdown:   { position:'absolute', top:'calc(100% + 4px)', left:0, right:0, background:'var(--surface)', border:'.5px solid var(--border)', borderRadius:'var(--r)', boxShadow:'var(--sh2)', zIndex:9999, overflow:'hidden', maxHeight:300, overflowY:'auto' },
+  loadRow:    { padding:'9px 14px', fontSize:12, color:'var(--text3)', display:'flex', alignItems:'center', gap:6 },
+  dot:        { width:5, height:5, borderRadius:'50%', background:'var(--green)', display:'inline-block' },
+  item:       { padding:'10px 14px', cursor:'pointer', borderBottom:'.5px solid var(--border)', transition:'background .1s', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 },
+  itemHov:    { background:'var(--green-l)' },
+  itemLeft:   { flex:1, minWidth:0 },
+  itemName:   { fontSize:14, fontWeight:500, color:'var(--text)' },
+  itemIngs:   { fontSize:11, color:'var(--text3)', marginTop:2 },
+  aiLabel:    { fontSize:10, background:'var(--green-l)', color:'var(--green)', borderRadius:4, padding:'1px 5px', marginLeft:5, flexShrink:0 },
+  hideBtn:    { fontSize:11, color:'var(--text3)', padding:'2px 6px', borderRadius:4, border:'.5px solid var(--border)', background:'none', cursor:'pointer', flexShrink:0, alignSelf:'center', whiteSpace:'nowrap' },
+  noResult:   { padding:'10px 14px', fontSize:12, color:'var(--text3)' },
+  errRow:     { padding:'9px 14px', fontSize:11, color:'var(--red)', background:'var(--red-l)' },
+}
+
+if (typeof document !== 'undefined' && !document.getElementById('pp-anim')) {
+  const st = document.createElement('style')
+  st.id = 'pp-anim'
+  st.textContent = '@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}'
+  document.head.appendChild(st)
+}
+
+// 除外リスト取得（localStorageから）
+function getHidden() {
+  try { return JSON.parse(localStorage.getItem('hiddenRecipes') || '[]') } catch { return [] }
+}
+function addHidden(name) {
+  const list = getHidden()
+  if (!list.includes(name)) localStorage.setItem('hiddenRecipes', JSON.stringify([...list, name]))
 }
 
 export default function RecipeSuggest({ value, onChange, onSelect, placeholder }) {
-  const [query, setQuery] = useState(value || '')
+  const [query,       setQuery]       = useState(value || '')
   const [suggestions, setSuggestions] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [focused, setFocused] = useState(false)
-  const [hoverId, setHoverId] = useState(null)
+  const [aiLoading,   setAiLoading]   = useState(false)
+  const [aiError,     setAiError]     = useState('')
+  const [focused,     setFocused]     = useState(false)
+  const [hoverId,     setHoverId]     = useState(null)
   const timerRef = useRef(null)
-  const geminiKey = localStorage.getItem('geminiKey') || ''
 
   useEffect(() => { setQuery(value || '') }, [value])
 
   useEffect(() => {
-    if (!query || query.length < 1) { setSuggestions([]); return }
+    setAiError('')
+    if (!query || query.length < 1) { setSuggestions([]); setAiLoading(false); return }
 
-    // ローカルDBをまず即時表示
-    const local = searchRecipes(query)
+    const hidden = getHidden()
+    // ローカルDB即時表示（除外リスト除く）
+    const local = searchRecipes(query).filter(r => !hidden.includes(r.name))
     setSuggestions(local)
 
-    // Gemini APIで追加サジェスト（デバウンス600ms）
-    if (geminiKey) {
-      clearTimeout(timerRef.current)
-      setLoading(true)
-      timerRef.current = setTimeout(async () => {
+    const geminiKey = localStorage.getItem('geminiKey') || ''
+    if (!geminiKey) return
+
+    clearTimeout(timerRef.current)
+    setAiLoading(true)
+    timerRef.current = setTimeout(async () => {
+      try {
         const ai = await fetchGeminiSuggestions(query, geminiKey)
-        // ローカルDBにない名前だけ追加
+        const hidden2    = getHidden() // 再取得（非同期なのでタイムラグ対策）
         const localNames = new Set(local.map(r => r.name))
         const merged = [
           ...local,
-          ...ai.filter(r => !localNames.has(r.name)).map(r => ({ ...r, fromAI: true }))
+          ...ai
+            .filter(r => !localNames.has(r.name) && !hidden2.includes(r.name))
+            .map(r => ({ ...r, fromAI:true }))
         ]
         setSuggestions(merged)
-        setLoading(false)
-      }, 600)
-    }
-    return () => clearTimeout(timerRef.current)
-  }, [query, geminiKey])
+      } catch(e) {
+        console.error('Gemini error:', e)
+        setAiError('Gemini APIエラー（設定タブでAPIキーを確認してください）')
+      } finally {
+        setAiLoading(false)
+      }
+    }, 600)
 
-  const handleChange = (e) => {
-    const v = e.target.value
-    setQuery(v)
-    onChange?.(v)
-  }
+    return () => { clearTimeout(timerRef.current); setAiLoading(false) }
+  }, [query])
 
-  const handleSelect = (recipe) => {
+  const handleSelect = useCallback((recipe) => {
     setQuery(recipe.name)
     onChange?.(recipe.name)
     onSelect?.(recipe)
     setSuggestions([])
     setFocused(false)
-  }
+    setAiLoading(false)
+  }, [onChange, onSelect])
 
-  const showDropdown = focused && suggestions.length > 0
+  const handleHide = useCallback((e, name) => {
+    e.stopPropagation()
+    addHidden(name)
+    setSuggestions(prev => prev.filter(r => r.name !== name))
+  }, [])
+
+  const showDropdown = focused && (suggestions.length > 0 || aiLoading || aiError)
 
   return (
     <div style={s.wrap}>
       <input
         style={{ ...s.input, ...(focused ? s.inputFocus : {}) }}
         value={query}
-        onChange={handleChange}
+        onChange={e => { setQuery(e.target.value); onChange?.(e.target.value) }}
         onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
+        onBlur={() => setTimeout(() => { setFocused(false); setAiLoading(false) }, 250)}
         placeholder={placeholder || '料理名を入力（例：鮭、唐揚げ）'}
       />
+
       {showDropdown && (
         <div style={s.dropdown}>
-          {loading && <div style={s.loading}>✨ Geminiで検索中...</div>}
-          {suggestions.map((r, i) => (
-            <div
-              key={i}
-              style={{ ...s.item, ...(hoverId === i ? s.itemHover : {}), borderBottom: i === suggestions.length - 1 ? 'none' : undefined }}
-              onMouseEnter={() => setHoverId(i)}
-              onMouseLeave={() => setHoverId(null)}
-              onMouseDown={() => handleSelect(r)}
-            >
-              <div style={s.itemName}>
-                {r.name}
-                {r.fromAI && <span style={s.aiLabel}>AI</span>}
-              </div>
-              {r.ings && (
-                <div style={s.itemIngs}>{r.ings.slice(0, 5).join('・')}</div>
-              )}
+          {aiLoading && (
+            <div style={s.loadRow}>
+              {[0,1,2].map(i => <span key={i} style={{...s.dot, animation:`pp-pulse 1.2s ${i*0.2}s infinite`}} />)}
+              <span style={{marginLeft:4}}>Geminiで検索中...</span>
             </div>
-          ))}
+          )}
+          {aiError && <div style={s.errRow}>⚠ {aiError}</div>}
+
+          {suggestions.length === 0 && !aiLoading
+            ? <div style={s.noResult}>候補が見つかりません</div>
+            : suggestions.map((r,i) => (
+                <div
+                  key={i}
+                  style={{ ...s.item, ...(hoverId===i ? s.itemHov : {}), borderBottom: i===suggestions.length-1 ? 'none' : undefined }}
+                  onMouseEnter={() => setHoverId(i)}
+                  onMouseLeave={() => setHoverId(null)}
+                  onMouseDown={() => handleSelect(r)}
+                  onTouchEnd={e => { e.preventDefault(); handleSelect(r) }}
+                >
+                  <div style={s.itemLeft}>
+                    <div style={s.itemName}>
+                      {r.name}
+                      {r.fromAI && <span style={s.aiLabel}>✨ AI</span>}
+                    </div>
+                    {r.ings?.length > 0 && (
+                      <div style={s.itemIngs}>{r.ings.slice(0,5).join('・')}</div>
+                    )}
+                  </div>
+                  {/* 「出さない」ボタン */}
+                  <button
+                    style={s.hideBtn}
+                    onMouseDown={e => e.stopPropagation()}
+                    onTouchEnd={e => { e.stopPropagation(); handleHide(e, r.name) }}
+                    onClick={e => handleHide(e, r.name)}
+                    title="この料理を今後表示しない"
+                  >
+                    出さない
+                  </button>
+                </div>
+              ))
+          }
         </div>
       )}
     </div>
