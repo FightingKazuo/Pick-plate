@@ -42,7 +42,8 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
   const [aiError,     setAiError]     = useState('')
   const [focused,     setFocused]     = useState(false)
   const [hoverId,     setHoverId]     = useState(null)
-  const timerRef = useRef(null)
+  const timerRef         = useRef(null)
+  const dropdownTouched  = useRef(false)  // iOSキーボード最小化対策
 
   useEffect(() => { setQuery(value || '') }, [value])
 
@@ -107,12 +108,25 @@ export default function RecipeSuggest({ value, onChange, onSelect, placeholder }
         value={query}
         onChange={e => { setQuery(e.target.value); onChange?.(e.target.value) }}
         onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => { setFocused(false); setAiLoading(false) }, 250)}
+        onBlur={() => {
+              // iOSのキーボード最小化対応:
+              // 300ms待って、その間にdropdownへのタッチがあれば閉じない
+              setTimeout(() => {
+                if (!dropdownTouched.current) {
+                  setFocused(false)
+                  setAiLoading(false)
+                }
+                dropdownTouched.current = false
+              }, 300)
+            }}
         placeholder={placeholder || '料理名を入力（例：鮭、唐揚げ）'}
       />
 
       {showDropdown && (
-        <div style={s.dropdown}>
+        <div style={s.dropdown}
+          onTouchStart={() => { dropdownTouched.current = true }}
+          onMouseDown={() =>  { dropdownTouched.current = true }}
+        >
           {aiLoading && (
             <div style={s.loadRow}>
               {[0,1,2].map(i => <span key={i} style={{...s.dot, animation:`pp-pulse 1.2s ${i*0.2}s infinite`}} />)}
