@@ -131,6 +131,11 @@ const fetchWithTimeout = (url, options) =>
     new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 40000)),
   ])
 
+// AQ. 形式は見た目OAuthだが AI Studio の APIキーなので ?key= で送るのが正しい
+// 家計簿 geminiOcr.js v8 と同じ判定ロジック
+const isOAuthLike = (key) =>
+  key.startsWith('AQ.') || key.startsWith('ya29.') || key.startsWith('AQ ')
+
 export async function fetchGeminiSuggestions(keyword, apiKey) {
   if (!apiKey || !keyword) return []
 
@@ -149,10 +154,17 @@ export async function fetchGeminiSuggestions(keyword, apiKey) {
   for (const { base, model } of GEMINI_ENDPOINTS) {
     const urlParam  = `${base}/${model}:generateContent?key=${apiKey}`
     const urlBearer = `${base}/${model}:generateContent`
-    const attempts  = [
-      { url: urlParam,  headers: { 'Content-Type': 'application/json' } },
-      { url: urlBearer, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` } },
-    ]
+    // AQ.キーはAPIキー方式（?key=）を先に試す（家計簿と同じ）
+    // OAuthトークンに見えるが AI Studio の APIキーは ?key= が正しい
+    const attempts = isOAuthLike(apiKey)
+      ? [
+          { url: urlParam,  headers: { 'Content-Type': 'application/json' } },
+          { url: urlBearer, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` } },
+        ]
+      : [
+          { url: urlParam,  headers: { 'Content-Type': 'application/json' } },
+          { url: urlBearer, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` } },
+        ]
 
     let res = null
     for (const attempt of attempts) {
