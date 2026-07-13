@@ -113,26 +113,38 @@ export function searchRecipes(keyword) {
 // Gemini APIでレシピサジェスト
 export async function fetchGeminiSuggestions(keyword, apiKey) {
   if (!apiKey || !keyword) return []
-  try {
-    const prompt = `料理名のサジェストをしてください。
-キーワード:「${keyword}」を使った料理・料理名を8個提案してください。
-必ずJSON配列のみで返答し、前後に説明文やコードブロック記号は含めないこと。
-[{"name":"料理名","ings":["食材1","食材2","食材3"]}]`
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      }
-    )
-    const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
-  } catch (e) {
-    console.error('Gemini error:', e)
-    return []
+  const prompt = `日本の家庭料理のサジェストをしてください。
+「${keyword}」を使った、または「${keyword}」という名前を含む料理を8品提案してください。
+必ずJSON配列のみで返答し、前後に説明文・コードブロック記号（バッククォート等）は絶対に含めないこと。
+形式: [{"name":"料理名","ings":["主な食材1","食材2","食材3"]}]`
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 800 }
+      })
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || `HTTP ${res.status}`)
   }
+
+  const data = await res.json()
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  // JSONブロックを抽出（```json ... ``` や ``` ... ``` に対応）
+  const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/)
+  const clean = jsonMatch ? jsonMatch[0] : text.replace(/```json|```/g, '').trim()
+
+  const parsed = JSON.parse(clean)
+  // 配列であることを確認
+  if (!Array.isArray(parsed)) throw new Error('Not an array')
+  return parsed.filter(r => r.name && typeof r.name === 'string')
 }
