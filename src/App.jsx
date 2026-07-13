@@ -33,7 +33,7 @@ const css = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     flexShrink: 0, background: 'var(--surface)',
   },
-  title: { fontFamily: 'var(--font)', fontSize: 17, fontWeight: 700, color: 'var(--green)' },
+  title: { fontFamily: "'Inter', sans-serif", fontSize: 17, fontWeight: 800, color: 'var(--green)', letterSpacing: '-0.5px' },
   roomBadge: {
     fontSize: 11, background: 'var(--green-l)', color: 'var(--green)',
     borderRadius: 20, padding: '4px 10px', fontWeight: 500,
@@ -131,7 +131,7 @@ export default function App() {
     <div style={css.app}>
       {/* Header */}
       <div style={css.header}>
-        <div style={css.title}>🛒 おかいもの手帖</div>
+        <div style={css.title}>Pick Plate</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {syncing && <span style={{ fontSize: 11, color: 'var(--text3)' }}>同期中...</span>}
           {roomCode
