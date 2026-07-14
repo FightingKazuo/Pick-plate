@@ -120,6 +120,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
   const [query,      setQuery]      = useState('')
   const [aiResults,  setAiResults]  = useState([])
   const [aiLoading,  setAiLoading]  = useState(false)
+  const [aiError,    setAiError]    = useState('')
   const [selTmpls,   setSelTmpls]   = useState([])
   const [expandIdx,  setExpandIdx]  = useState(null)
   const [showCount,  setShowCount]  = useState(SUGGEST_INIT)
@@ -128,26 +129,29 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
   const [addingCustom, setAddingCustom] = useState(false)
   const [customName,   setCustomName]   = useState('')
   const [customIngs,   setCustomIngs]   = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
   const isComposing = useRef(false)
   const timer       = useRef(null)
 
   const confirmedNames = new Set(confirmed.map(c=>c.name))
   const customMenus    = getCustomMenus()
 
-  // ── サジェスト一覧（ローカルDB＋カスタム＋AI）──
-  // queryがあればDB絞り込み、なければ全件
+  // ── サジェスト一覧（ローカルDB＋カスタム）──
+  // queryあり→DB+カスタムを絞り込み表示
+  // queryなし→カスタムメニューのみ（空のときは何も出さない、履歴を前面に）
   const localResults = useMemo(() => {
-    const db  = searchRecipes(query || '')
-    // queryなしは全DB（先頭20件）
-    const base = query ? db : searchRecipes('') // 空検索は全DBから
-    const cm   = customMenus.filter(m => !query || m.name.includes(query))
-    // カスタムメニューを先頭に、DBを後ろに
-    const merged = [...cm, ...base.filter(r => !cm.find(c=>c.name===r.name))]
-    return merged
+    if (!query) {
+      // 未入力時はカスタムメニューのみ
+      return customMenus
+    }
+    const db = searchRecipes(query)
+    const cm = customMenus.filter(m => m.name.includes(query) || (m.ings||[]).some(i=>i.includes(query)))
+    return [...cm, ...db.filter(r => !cm.find(c=>c.name===r.name))]
   }, [query])
 
   // AI検索（queryあり時のみ）
   useEffect(() => {
+    setAiError('')
     if (!query || query.length < 1) { setAiResults([]); setAiLoading(false); return }
     if (isComposing.current) return
     clearTimeout(timer.current)
@@ -159,7 +163,11 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
         const ai = await fetchGeminiSuggestions(query, key)
         const localNames = new Set(localResults.map(r=>r.name))
         setAiResults(ai.filter(r=>!localNames.has(r.name)).map(r=>({...r,fromAI:true})))
-      } catch(e) { console.error(e) } finally { setAiLoading(false) }
+      } catch(e) {
+          console.error(e)
+          setAiError(e.message?.slice(0,80) || 'Gemini APIエラー')
+          setTimeout(() => setAiError(''), 5000) // 5秒後に消す
+        } finally { setAiLoading(false) }
     }, 600)
     return () => { clearTimeout(timer.current); setAiLoading(false) }
   }, [query])
@@ -273,27 +281,38 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
         {/* 検索 */}
         <div style={{marginBottom:12}}>
           <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>料理を選ぶ</div>
+          <div style={{fontSize:11,color:'var(--text3)',marginBottom:6}}>料理名でも食材名でも検索できます（例：なす、鮭、豚バラ）</div>
           <input
             value={query}
             onChange={e=>{setQuery(e.target.value);setShowCount(SUGGEST_INIT)}}
+            onFocus={()=>setSearchFocused(true)}
+            onBlur={()=>setTimeout(()=>setSearchFocused(false),200)}
             onCompositionStart={()=>{isComposing.current=true}}
             onCompositionEnd={e=>{isComposing.current=false;setQuery(e.target.value+' ');setTimeout(()=>setQuery(e.target.value),0)}}
             placeholder="絞り込み検索（空欄で全件表示）"
             style={{width:'100%',padding:'10px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:14,outline:'none',background:'var(--surface)',color:'var(--text)',marginBottom:8}}
           />
 
-          {/* AIローディング */}
+          {/* AIローディング・エラー */}
           {aiLoading && (
             <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 2px',fontSize:12,color:'var(--text3)',marginBottom:6}}>
               {[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
               <span style={{marginLeft:4}}>Geminiで検索中...</span>
             </div>
           )}
+          {aiError && !aiLoading && (
+            <div style={{fontSize:11,color:'var(--red)',background:'var(--red-l)',borderRadius:'var(--rs)',padding:'6px 9px',marginBottom:6}}>
+              ⚠ Gemini APIエラー: {aiError}
+            </div>
+          )}
 
-          {/* 候補一覧（固定表示） */}
-          <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
+          {/* 候補一覧（検索ありの時のみ表示） */}
+          {(query || localResults.length > 0) && <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
             {visibleResults.length===0 && !aiLoading && (
-              <div style={{padding:'12px 13px',fontSize:13,color:'var(--text3)'}}>候補が見つかりません</div>
+              <div style={{padding:'12px 13px'}}>
+                <div style={{fontSize:13,color:'var(--text3)',marginBottom: aiError?6:0}}>候補が見つかりません</div>
+                {aiError && <div style={{fontSize:11,color:'var(--red)',background:'var(--red-l)',borderRadius:'var(--rs)',padding:'6px 9px'}}>⚠ Gemini: {aiError}</div>}
+              </div>
             )}
             {visibleResults.map((r,i)=>(
               <div key={i} onClick={()=>pick(r)} style={{
@@ -320,7 +339,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
                 もっと見る（残り{allResults.length-showCount}件）
               </div>
             )}
-          </div>
+          </div>}
         </div>
 
         {/* カスタムメニュー追加 */}
