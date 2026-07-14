@@ -121,14 +121,14 @@ function MySetsSection({ mySets, onAddSet, confirmedNames }) {
         {sets.map((set, i) => {
           const alreadyAdded = set.meals.every(m => confirmedNames.has(m.name))
           return (
-            <div key={i}
-              onClick={() => !alreadyAdded && onAddSet(set.meals)}
-              onTouchEnd={e => { e.preventDefault(); if (!alreadyAdded) onAddSet(set.meals) }}
-              onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
+            <button key={i}
+              disabled={alreadyAdded}
+              onClick={() => onAddSet(set.meals)}
               style={{
+                width:'100%', textAlign:'left',
                 padding:'10px 13px', borderRadius:'var(--rs)', cursor: alreadyAdded?'default':'pointer',
-                border:'.5px solid var(--border)',
-                background: alreadyAdded ? 'var(--surface2)' : hov===i ? 'var(--green-l)' : 'var(--surface)',
+                border:'.5px solid var(--border)', fontFamily:'var(--font)',
+                background: alreadyAdded ? 'var(--surface2)' : 'var(--surface)',
                 transition:'background .1s', opacity: alreadyAdded ? 0.5 : 1,
               }}>
               <div style={{fontSize:13,fontWeight:500,marginBottom:3,color: alreadyAdded?'var(--text3)':'var(--text)'}}>
@@ -137,7 +137,7 @@ function MySetsSection({ mySets, onAddSet, confirmedNames }) {
               <div style={{fontSize:11,color:'var(--text3)'}}>
                 {set.meals.map(m=>m.name).join('・')}
               </div>
-            </div>
+            </button>
           )
         })}
       </div>
@@ -347,7 +347,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
   }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease'}}>
+    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease',WebkitOverflowScrolling:'touch'}}>
 
       {/* ヘッダー */}
       <div style={{padding:'14px 16px 12px',background:'var(--surface)',borderBottom:'.5px solid var(--border)',flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
@@ -449,13 +449,13 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
               </div>
             )}
             {visibleResults.map((r,i)=>(
-              <div key={i}
+              <button key={i}
               onClick={()=>pick(r)}
-              onTouchEnd={e=>{e.preventDefault();pick(r)}}
               style={{
+                width:'100%', textAlign:'left', fontFamily:'var(--font)',
                 padding:'11px 13px',cursor:'pointer',
                 borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
-                background:'var(--surface)',
+                background:'var(--surface)', border:'none', borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
                 transition:'background .1s',
               }}
               onMouseEnter={e=>e.currentTarget.style.background='var(--green-l)'}
@@ -467,10 +467,10 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
                   {r.isCustom && <span style={{fontSize:9,background:'var(--purple-l)',color:'var(--purple)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>マイメニュー</span>}
                 </div>
                 {r.ings?.length>0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{r.ings.slice(0,5).join('・')}</div>}
-              </div>
+              </button>
             ))}
             {hasMore && (
-              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} onTouchEnd={e=>{e.preventDefault();setShowCount(c=>c+SUGGEST_MORE)}} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
+              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
                 もっと見る（残り{allResults.length-showCount}件）
               </div>
             )}
@@ -501,13 +501,11 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
           <div>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>履歴</div>
             {filteredHist.map((m,i)=>(
-              <div key={i} style={{display:'flex',alignItems:'center',padding:'10px 6px',borderBottom:'.5px solid var(--border)',cursor:'pointer'}}
-                onClick={()=>{onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
-                onTouchEnd={e=>{e.preventDefault();onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
-                onTouchStart={e=>e.currentTarget.style.background='var(--surface2)'}
-                onTouchEnd={e=>e.currentTarget.style.background=''}
-              >
-                <span style={{flex:1,fontSize:13}}>{m.name}</span>
+              <div key={i} style={{display:'flex',alignItems:'center',borderBottom:'.5px solid var(--border)'}}>
+                <button
+                  onClick={()=>{onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
+                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13}}
+                >{m.name}</button>
                 <button
                   onClick={e=>deleteHist(m.name,e)}
                   style={{fontSize:11,color:'var(--text3)',padding:'3px 7px',borderRadius:'var(--rs)',border:'.5px solid var(--border)',background:'none',cursor:'pointer',marginRight:6}}
@@ -642,4 +640,3 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
     </>
   )
 }
-
