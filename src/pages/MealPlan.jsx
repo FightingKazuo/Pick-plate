@@ -642,3 +642,4 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
     </>
   )
 }
+
