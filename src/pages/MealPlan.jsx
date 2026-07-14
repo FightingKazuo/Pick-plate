@@ -101,12 +101,58 @@ function addCustomMenu(meal) {
   }
 }
 
+// ── マイセット（複数料理をまとめて登録）──
+function getMySets() {
+  try { return JSON.parse(localStorage.getItem('mySets') || '[]') } catch { return [] }
+}
+
 // ── アニメーション ──
 if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
   const st = document.createElement('style')
   st.id='pp-anim'
   st.textContent='@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}} @keyframes pp-slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}'
   document.head.appendChild(st)
+}
+
+// ════════════════════════════════════════════
+// マイセットセクション
+// ════════════════════════════════════════════
+function MySetsSection({ onAddSet, confirmedNames }) {
+  const [sets, setSets] = useState(getMySets)
+  const [hov, setHov]   = useState(null)
+
+  if (sets.length === 0) return null
+
+  return (
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>
+        Myセット
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {sets.map((set, i) => {
+          const alreadyAdded = set.meals.every(m => confirmedNames.has(m.name))
+          return (
+            <div key={i}
+              onClick={() => !alreadyAdded && onAddSet(set.meals)}
+              onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
+              style={{
+                padding:'10px 13px', borderRadius:'var(--rs)', cursor: alreadyAdded?'default':'pointer',
+                border:'.5px solid var(--border)',
+                background: alreadyAdded ? 'var(--surface2)' : hov===i ? 'var(--green-l)' : 'var(--surface)',
+                transition:'background .1s', opacity: alreadyAdded ? 0.5 : 1,
+              }}>
+              <div style={{fontSize:13,fontWeight:500,marginBottom:3,color: alreadyAdded?'var(--text3)':'var(--text)'}}>
+                {alreadyAdded ? '✓ ' : ''}{set.name}
+              </div>
+              <div style={{fontSize:11,color:'var(--text3)'}}>
+                {set.meals.map(m=>m.name).join('・')}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ════════════════════════════════════════════
@@ -231,16 +277,14 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
   const customMenus    = getCustomMenus()
 
   // ── サジェスト一覧（ローカルDB＋カスタム）──
-  // queryあり→DB+カスタムを絞り込み表示
-  // queryなし→カスタムメニューのみ（空のときは何も出さない、履歴を前面に）
+  // queryあり→絞り込み、queryなし→全DB（先頭20件）＋カスタムメニュー
   const localResults = useMemo(() => {
-    if (!query) {
-      // 未入力時はカスタムメニューのみ
-      return customMenus
-    }
-    const db = searchRecipes(query)
-    const cm = customMenus.filter(m => m.name.includes(query) || (m.ings||[]).some(i=>i.includes(query)))
-    return [...cm, ...db.filter(r => !cm.find(c=>c.name===r.name))]
+    const cm = customMenus.filter(m =>
+      !query || m.name.includes(query) || (m.ings||[]).some(i=>i.includes(query))
+    )
+    const db = searchRecipes(query || '')  // 空文字で全件返る
+    const dbFiltered = db.filter(r => !cm.find(c => c.name === r.name))
+    return [...cm, ...dbFiltered]
   }, [query])
 
   // AI検索（queryあり時のみ）
@@ -353,6 +397,14 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
           </div>
         )}
 
+        {/* マイセット */}
+        <MySetsSection onAddSet={(meals) => {
+          meals.forEach(m => {
+            onAdd({ name: m.name, ings: m.ings || [] })
+            addHistory({ name: m.name, ings: m.ings || [] })
+          })
+        }} confirmedNames={confirmedNames} />
+
         {/* テンプレート */}
         <div style={{marginBottom:16}}>
           <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>テンプレート</div>
@@ -435,8 +487,6 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
                 background:'var(--surface)',
                 transition:'background .1s',
               }}
-              onTouchStart={e=>e.currentTarget.style.background='var(--green-l)'}
-              onTouchEnd={e=>e.currentTarget.style.background='var(--surface)'}
               onMouseEnter={e=>e.currentTarget.style.background='var(--green-l)'}
               onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}
               >
@@ -521,8 +571,13 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const meals     = data?.meals     || {}
   const templates = data?.templates || DEFAULT_TEMPLATES
   const rowRefs   = useRef([])
-  // 時間帯別テンプレ取得ヘルパー（InputPageに渡す）
-  const getTemplates = (mealLabel) => getTemplatesForMeal(templates, mealLabel)
+  // 時間帯別テンプレ取得（空の場合はDEFAULT_TEMPLATESにフォールバック）
+  const getTemplates = (mealLabel) => {
+    const tmpl = getTemplatesForMeal(templates, mealLabel)
+    if (tmpl && tmpl.length > 0) return tmpl
+    // フォールバック：DEFAULT_TEMPLATESから取得
+    return getTemplatesForMeal(DEFAULT_TEMPLATES, mealLabel)
+  }
   const [inputTarget, setInputTarget] = useState(null)
 
   useEffect(() => {
