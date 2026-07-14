@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { checkRoom } from '../firebase'
-import { DEFAULT_TEMPLATES } from './MealPlan'
+import { DEFAULT_TEMPLATES, getTemplatesForMeal } from './MealPlan'
 import { DEFAULT_STAPLES } from '../App'
 
 
@@ -93,17 +93,27 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
 
   const templates = data?.templates || DEFAULT_TEMPLATES
   const staples   = data?.staples   || DEFAULT_STAPLES
+  const [activeMeal, setActiveMeal] = useState('朝')
 
-  // テンプレ操作
+  // 時間帯別テンプレ取得
+  const mealTemplates = getTemplatesForMeal(templates, activeMeal)
+
+  // テンプレ操作（時間帯別オブジェクト対応）
   const updateTemplates = (next) => onUpdate({ templates: next })
+
   const addTemplate = () => {
     const name = newTmplName.trim(); if (!name) return
     const ings = newTmplIngs.split(/[,、，]+/).map(s => s.trim()).filter(Boolean)
-    updateTemplates([...templates, { id: Date.now(), name, ings, skipList: newTmplSkip }])
+    const cur  = Array.isArray(templates) ? { 朝:[], 昼:[], 夜:[] } : { ...templates }
+    cur[activeMeal] = [...(cur[activeMeal]||[]), { id: Date.now(), name, ings, skipList: newTmplSkip }]
+    updateTemplates(cur)
     setNewTmplName(''); setNewTmplIngs(''); setNewTmplSkip(false); setShowAddTmpl(false)
   }
-  const removeTmpl  = (id) => updateTemplates(templates.filter(t => t.id !== id))
-  const toggleSkip  = (id) => updateTemplates(templates.map(t => t.id === id ? { ...t, skipList: !t.skipList } : t))
+  const removeTmpl = (id) => {
+    const cur = Array.isArray(templates) ? { 朝:[], 昼:[], 夜:[] } : { ...templates }
+    cur[activeMeal] = (cur[activeMeal]||[]).filter(t => t.id !== id)
+    updateTemplates(cur)
+  }
 
   // 常備品操作
   const updateStaples = (next) => onUpdate({ staples: next })
@@ -128,11 +138,23 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
       {/* ── 朝ごはんテンプレート ── */}
       <div style={{ ...s.sec, marginTop: 0 }}>朝ごはんテンプレート</div>
       <div style={s.card}>
-        <label style={s.label}>「朝」タップ時のワンタップ選択肢。「リスト不要」の項目は買い物リストに追加されません。</label>
-        {templates.map(t => (
+        <label style={s.label}>朝・昼・夜それぞれの入力時に表示されるワンタップ選択肢です。</label>
+
+        {/* 時間帯タブ */}
+        <div style={{display:'flex', gap:4, marginBottom:12}}>
+          {['朝','昼','夜'].map(meal => (
+            <button key={meal} onClick={() => setActiveMeal(meal)} style={{
+              flex:1, padding:'6px 0', border:'none', borderRadius:'var(--rs)', cursor:'pointer', fontSize:13, fontWeight:activeMeal===meal?600:400,
+              background: activeMeal===meal ? 'var(--green)' : 'var(--surface2)',
+              color: activeMeal===meal ? '#fff' : 'var(--text2)',
+              transition:'all .15s',
+            }}>{meal}</button>
+          ))}
+        </div>
+
+        {mealTemplates.map(t => (
           <div key={t.id} style={s.listItem}>
             <span style={s.itemName}>{t.name}</span>
-            <button style={s.tagBtn(t.skipList)} onClick={() => toggleSkip(t.id)}>{t.skipList ? 'リスト不要' : 'リスト追加'}</button>
             <button style={s.delBtn} onClick={() => removeTmpl(t.id)}>×</button>
           </div>
         ))}
