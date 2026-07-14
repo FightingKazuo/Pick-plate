@@ -301,8 +301,24 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
             </div>
           )}
           {aiError && !aiLoading && (
-            <div style={{fontSize:11,color:'var(--red)',background:'var(--red-l)',borderRadius:'var(--rs)',padding:'6px 9px',marginBottom:6}}>
-              ⚠ Gemini APIエラー: {aiError}
+            <div style={{
+              borderRadius:'var(--rs)', padding:'10px 12px', marginBottom:8,
+              background: aiError.includes('無料枠') ? 'var(--amber-l)' : 'var(--red-l)',
+              border: `.5px solid ${aiError.includes('無料枠') ? '#E8C94A' : '#F8C4B4'}`,
+            }}>
+              <div style={{fontSize:12, fontWeight:500, marginBottom:3,
+                color: aiError.includes('無料枠') ? 'var(--amber)' : 'var(--red)',
+              }}>
+                {aiError.includes('無料枠') ? '⏰ Gemini AI：本日の無料枠終了' : '⚠️ Gemini AI：接続エラー'}
+              </div>
+              <div style={{fontSize:11, color:'var(--text2)', lineHeight:1.6}}>
+                {aiError}
+                {aiError.includes('無料枠') && (
+                  <span style={{display:'block', marginTop:3, color:'var(--text3)'}}>
+                    ※ DBからの候補は引き続き表示されます
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -311,7 +327,11 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
             {visibleResults.length===0 && !aiLoading && (
               <div style={{padding:'12px 13px'}}>
                 <div style={{fontSize:13,color:'var(--text3)',marginBottom: aiError?6:0}}>候補が見つかりません</div>
-                {aiError && <div style={{fontSize:11,color:'var(--red)',background:'var(--red-l)',borderRadius:'var(--rs)',padding:'6px 9px'}}>⚠ Gemini: {aiError}</div>}
+                {aiError && (
+                  <div style={{fontSize:11,color:'var(--amber)',background:'var(--amber-l)',borderRadius:'var(--rs)',padding:'6px 9px',marginTop:4,border:'.5px solid #E8C94A'}}>
+                    ⏰ {aiError}
+                  </div>
+                )}
               </div>
             )}
             {visibleResults.map((r,i)=>(
