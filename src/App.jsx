@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { saveRoom, subscribeRoom } from './firebase'
 import MealPlan from './pages/MealPlan'
 import ShoppingList, { guessCategory } from './pages/ShoppingList'
 import Settings from './pages/Settings'
 
-// デフォルト常備品リスト
 export const DEFAULT_STAPLES = [
   '醤油','みりん','酒','砂糖','塩','味噌','酢','ごま油','サラダ油','オリーブ油',
   '片栗粉','小麦粉','だし','コンソメ','鶏がらスープの素','白ごま','黒こしょう',
@@ -31,27 +30,47 @@ const css = {
   offlineBanner: { background: 'var(--amber-l)', borderBottom: '.5px solid #E8C94A', padding: '7px 14px', fontSize: 12, color: 'var(--amber)', textAlign: 'center' },
 }
 
-// デバイス固有IDを生成・取得（ルームなし時の自動保存用）
-function getDeviceId() {
-  let id = localStorage.getItem('deviceId')
+// ── localStorageバックアップ ──
+const LS_BACKUP = 'pickplate-data-backup'
+const LS_DEVICE = 'deviceId'
+const LS_ROOM   = 'roomCode'
+
+const INITIAL_DATA = { meals: {}, items: [], templates: [], staples: DEFAULT_STAPLES }
+
+function loadBackup() {
+  try {
+    const s = localStorage.getItem(LS_BACKUP)
+    if (s) return { ...INITIAL_DATA, ...JSON.parse(s) }
+  } catch {}
+  return INITIAL_DATA
+}
+function saveBackup(data) {
+  try { localStorage.setItem(LS_BACKUP, JSON.stringify(data)) } catch {}
+}
+
+// deviceIdはアプリ起動時に1回だけ確定させる
+function getOrCreateDeviceId() {
+  let id = localStorage.getItem(LS_DEVICE)
   if (!id) {
     id = 'device-' + Math.random().toString(36).substring(2, 10)
-    localStorage.setItem('deviceId', id)
+    localStorage.setItem(LS_DEVICE, id)
   }
   return id
 }
 
-const INITIAL_DATA = { meals: {}, items: [], templates: [], staples: DEFAULT_STAPLES }
-
 export default function App() {
-  const [tab, setTab] = useState('meal')
-  const [roomCode, setRoomCode] = useState(() => localStorage.getItem('roomCode') || '')
-  const [data, setData] = useState(INITIAL_DATA)
-  const [syncing, setSyncing] = useState(false)
+  const [tab,      setTab]      = useState('meal')
+  const [roomCode, setRoomCode] = useState(() => localStorage.getItem(LS_ROOM) || '')
+  const [data,     setData]     = useState(() => loadBackup())
+  const [syncing,  setSyncing]  = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
 
-  // 実際に使うFirebaseキー（ルームあり→ルームコード、なし→デバイスID）
-  const firebaseKey = roomCode || getDeviceId()
+  // ★ firebaseKeyをrefで固定 — 再レンダリングで変わらない
+  const firebaseKeyRef = useRef(null)
+  if (!firebaseKeyRef.current) {
+    firebaseKeyRef.current = localStorage.getItem(LS_ROOM) || getOrCreateDeviceId()
+  }
+  const firebaseKey = roomCode || firebaseKeyRef.current
 
   useEffect(() => {
     const on = () => setIsOnline(true)
@@ -61,10 +80,13 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  // Firebase購読（常に購読、ルームなし時はdeviceIdで保存）
+  // Firebase購読
   useEffect(() => {
     const unsub = subscribeRoom(firebaseKey, (remoteData) => {
-      setData(prev => ({ ...INITIAL_DATA, ...remoteData, staples: remoteData.staples || DEFAULT_STAPLES }))
+      if (!remoteData) return
+      const merged = { ...INITIAL_DATA, ...remoteData, staples: remoteData.staples || DEFAULT_STAPLES }
+      setData(merged)
+      saveBackup(merged)
     })
     return () => unsub()
   }, [firebaseKey])
@@ -72,39 +94,38 @@ export default function App() {
   const handleUpdate = useCallback(async (patch) => {
     const next = { ...data, ...patch }
     setData(next)
+    saveBackup(next) // localStorageに即座に保存（オフライン・再読み込み対策）
     setSyncing(true)
     try { await saveRoom(firebaseKey, next) }
-    catch (e) { console.error('save error:', e) }
+    catch (e) { console.error('Firebase save error:', e) }
     finally { setSyncing(false) }
   }, [data, firebaseKey])
 
-  const handleRoomChange = (code) => {
-    localStorage.setItem('roomCode', code)
+  const handleRoomChange = useCallback((code) => {
+    localStorage.setItem(LS_ROOM, code)
+    firebaseKeyRef.current = code // refも更新
     setRoomCode(code)
-  }
+  }, [])
 
-  // 常備品チェック
+  // 常備品チェック（2文字以上の常備品が食材名に含まれる場合のみ除外）
   const staples = data?.staples || DEFAULT_STAPLES
-  const isStaple = (name) => staples.some(s => {
-    // 完全一致、または食材名が常備品を完全に含む場合のみ除外
-    // 「コンソメスープ」に「コンソメ」が含まれる→除外
-    // 「野菜」→常備品にないので除外しない
-    return name === s || name.includes(s) && s.length >= 2
-  })
+  const isStaple = useCallback((name) =>
+    staples.some(s => s.length >= 2 && (name === s || name.includes(s)))
+  , [staples])
 
-  // 献立から食材をリストに追加（常備品は除外）
+  // 買い物リストに追加（常備品・重複を除外）
   const addToList = useCallback((ings, mealName) => {
     const currentItems = data.items || []
     const newItems = ings
-      .filter(ing => !isStaple(ing))                          // 常備品除外
-      .filter(ing => !currentItems.find(i => i.name === ing)) // 重複除外
+      .filter(ing => !isStaple(ing))
+      .filter(ing => !currentItems.find(i => i.name === ing))
       .map(ing => ({
         id: Date.now() + Math.random(),
         name: ing, category: guessCategory(ing),
         checked: false, source: 'meal', mealName,
       }))
     if (newItems.length > 0) handleUpdate({ items: [...currentItems, ...newItems] })
-  }, [data.items, data.staples, handleUpdate])
+  }, [data.items, isStaple, handleUpdate])
 
   return (
     <div style={css.app}>
