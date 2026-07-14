@@ -99,29 +99,157 @@ export const RECIPE_DB = [
   { name: 'グラタン', ings: ['鶏もも肉', '玉ねぎ', 'マカロニ', 'バター', '小麦粉', '牛乳', 'シュレッドチーズ'] },
   { name: 'ロールキャベツ', ings: ['合いびき肉', 'キャベツ', '玉ねぎ', 'パン粉', '卵', 'コンソメ', 'トマト缶'] },
   { name: 'ポトフ', ings: ['鶏もも肉', 'ウインナー', 'にんじん', '玉ねぎ', 'じゃがいも', 'キャベツ', 'コンソメ'] },
+
+  // ── 追加：野菜メイン ──
+  { name: 'なすの揚げびたし',     ings: ['なす', 'だし', '醤油', 'みりん', '揚げ油', '大葉', '生姜'] },
+  { name: 'なすのトマト煮',       ings: ['なす', 'トマト缶', '玉ねぎ', 'にんにく', 'オリーブ油', 'バジル'] },
+  { name: 'ほうれん草のソテー',   ings: ['ほうれん草', 'にんにく', 'バター', '塩', 'こしょう'] },
+  { name: 'ブロッコリーのソテー', ings: ['ブロッコリー', 'にんにく', 'オリーブ油', '塩', 'こしょう'] },
+  { name: 'かぼちゃのサラダ',     ings: ['かぼちゃ', 'マヨネーズ', '塩', 'こしょう', 'レーズン'] },
+  { name: '春菊のごま和え',       ings: ['春菊', '白ごま', '醤油', 'みりん', '砂糖'] },
+  { name: 'ゴボウのきんぴら風',   ings: ['ごぼう', 'にんじん', '醤油', 'みりん', '砂糖', 'ごま油'] },
+  { name: 'ピーマンの肉詰め',     ings: ['ピーマン', '合いびき肉', '玉ねぎ', '卵', 'パン粉', '醤油', 'みりん'] },
+  { name: 'れんこんのはさみ揚げ', ings: ['れんこん', '豚ひき肉', '玉ねぎ', '片栗粉', '揚げ油'] },
+  { name: 'アスパラのベーコン巻き',ings: ['アスパラ', 'ベーコン', '塩', 'こしょう', 'サラダ油'] },
+  { name: 'きのこのソテー',       ings: ['しめじ', 'えのき', 'エリンギ', 'バター', '醤油', 'にんにく'] },
+  { name: 'ほうれん草とベーコンのソテー', ings: ['ほうれん草', 'ベーコン', 'にんにく', 'バター', '塩', 'こしょう'] },
+
+  // ── 追加：魚介 ──
+  { name: '鮭の竜田揚げ',         ings: ['鮭', '醤油', '酒', '生姜', '片栗粉', '揚げ油'] },
+  { name: 'さばのカレー焼き',     ings: ['さば', 'カレー粉', '醤油', '酒', 'サラダ油'] },
+  { name: 'たこの唐揚げ',         ings: ['タコ', '醤油', '酒', '生姜', '片栗粉', '揚げ油'] },
+  { name: 'いかのバター醤油',     ings: ['イカ', 'バター', '醤油', '酒', '長ねぎ'] },
+  { name: 'えびのマヨネーズ炒め', ings: ['えび', 'マヨネーズ', 'ケチャップ', '牛乳', '塩', 'こしょう'] },
+  { name: 'あさりの味噌汁',       ings: ['あさり', '長ねぎ', 'だし', '味噌'] },
+  { name: 'ぶりのあら煮',         ings: ['ぶりあら', '大根', '生姜', '醤油', 'みりん', '酒', '砂糖'] },
+  { name: 'かつおの刺身',         ings: ['かつお', '玉ねぎ', 'みょうが', '生姜', '醤油', 'ごま油'] },
+  { name: '牡蠣のバター焼き',     ings: ['牡蠣', 'バター', '醤油', '酒', 'パセリ'] },
+  { name: 'ホタテのバター醤油',   ings: ['ほたて', 'バター', '醤油', '酒'] },
+
+  // ── 追加：肉料理 ──
+  { name: '豚バラとキャベツの蒸し炒め', ings: ['豚バラ', 'キャベツ', 'にんにく', '醤油', 'ごま油', '酒'] },
+  { name: '鶏むね肉のピカタ',     ings: ['鶏むね肉', '卵', 'パルメザンチーズ', '塩', 'こしょう', '小麦粉'] },
+  { name: '鶏の唐揚げ甘酢あん',   ings: ['鶏もも肉', '醤油', '酒', '片栗粉', '酢', '砂糖', 'ケチャップ'] },
+  { name: '豚のしゃぶしゃぶサラダ',ings: ['豚ロース', 'レタス', 'きゅうり', 'トマト', 'ポン酢', 'ごま油'] },
+  { name: '牛肉とピーマンの炒め物',ings: ['牛切り落とし', 'ピーマン', '玉ねぎ', '醤油', 'みりん', '酒', 'ごま油'] },
+  { name: 'ラムのソテー',         ings: ['ラム肉', '塩', 'こしょう', 'にんにく', 'ローズマリー', 'オリーブ油'] },
+  { name: '鶏のみぞれ煮',         ings: ['鶏もも肉', '大根おろし', 'だし', '醤油', 'みりん', '酒'] },
+  { name: '豚肉の梅しそ巻き',     ings: ['豚ロース', '梅干し', '大葉', '片栗粉', '醤油', 'みりん'] },
+  { name: 'とんかつ',             ings: ['豚ロース', '塩', 'こしょう', '小麦粉', '卵', 'パン粉', '揚げ油'] },
+  { name: 'チキンステーキ',       ings: ['鶏もも肉', '塩', 'こしょう', 'にんにく', 'バター', '醤油', 'みりん'] },
+
+  // ── 追加：パスタ・麺・ご飯 ──
+  { name: 'アラビアータ',         ings: ['パスタ', 'トマト缶', 'にんにく', '唐辛子', 'オリーブ油', '塩'] },
+  { name: 'ジェノベーゼ',         ings: ['パスタ', 'バジル', 'オリーブ油', 'パルメザンチーズ', 'にんにく', '松の実'] },
+  { name: '和風パスタ',           ings: ['パスタ', 'しめじ', 'ベーコン', '醤油', 'バター', '大葉'] },
+  { name: 'きのこクリームパスタ', ings: ['パスタ', 'しめじ', 'えのき', '生クリーム', 'バター', 'コンソメ', 'パルメザンチーズ'] },
+  { name: 'えびクリームパスタ',   ings: ['パスタ', 'えび', '生クリーム', 'バター', 'コンソメ', '塩', 'こしょう'] },
+  { name: 'たらこスパゲッティ',   ings: ['パスタ', 'たらこ', 'バター', '醤油', '大葉', '海苔'] },
+  { name: '親子丼（だしなし）',   ings: ['鶏もも肉', '卵', '玉ねぎ', '醤油', 'みりん', '酒', 'ごはん'] },
+  { name: '天津飯',               ings: ['卵', 'カニカマ', '長ねぎ', '醤油', 'ごま油', '片栗粉', 'ごはん'] },
+  { name: '海鮮丼',               ings: ['マグロ', 'サーモン', 'いくら', '醤油', 'みりん', 'ごはん'] },
+  { name: '豚キムチ丼',           ings: ['豚バラ', 'キムチ', '玉ねぎ', '醤油', 'ごま油', 'ごはん', '卵'] },
+  { name: 'ビビンバ',             ings: ['ごはん', '牛ひき肉', 'もやし', 'ほうれん草', 'にんじん', 'コチュジャン', '卵'] },
+  { name: 'そうめん',             ings: ['そうめん', 'だし', '醤油', 'みりん', '長ねぎ', '生姜', 'みょうが'] },
+  { name: 'ざるそば',             ings: ['そば', 'だし', '醤油', 'みりん', '長ねぎ', '山葵', '海苔'] },
+  { name: 'うどん（温）',         ings: ['うどん', 'だし', '醤油', 'みりん', '長ねぎ', 'かまぼこ', '卵'] },
+  { name: '焼きうどん',           ings: ['うどん', '豚バラ', 'キャベツ', 'もやし', '醤油', 'ごま油', 'かつお節'] },
+  { name: '台湾ラーメン',         ings: ['中華麺', '豚ひき肉', 'にら', 'もやし', '豆板醤', '醤油', 'にんにく'] },
+
+  // ── 追加：スープ・汁物 ──
+  { name: 'とん汁',               ings: ['豚バラ', '大根', 'にんじん', 'こんにゃく', 'ごぼう', '味噌', 'ごま油'] },
+  { name: 'かき卵スープ',         ings: ['卵', '鶏がらスープの素', '長ねぎ', '片栗粉', 'ごま油', '塩'] },
+  { name: '野菜スープ',           ings: ['玉ねぎ', 'にんじん', 'じゃがいも', 'キャベツ', 'コンソメ', '塩', 'こしょう'] },
+  { name: 'トマトスープ',         ings: ['トマト缶', '玉ねぎ', 'にんにく', 'コンソメ', 'オリーブ油', '塩', 'こしょう'] },
+  { name: 'かぼちゃスープ',       ings: ['かぼちゃ', '玉ねぎ', '牛乳', 'バター', 'コンソメ', '塩', 'こしょう'] },
+  { name: '豚バラとキャベツの味噌汁', ings: ['豚バラ', 'キャベツ', 'だし', '味噌', 'ごま油'] },
+  { name: 'なめこの味噌汁',       ings: ['なめこ', '豆腐', 'だし', '味噌', '長ねぎ'] },
+  { name: 'ラタトゥイユ風スープ', ings: ['なす', 'ズッキーニ', 'パプリカ', 'トマト缶', '玉ねぎ', 'コンソメ'] },
+
+  // ── 追加：卵・豆腐・ヘルシー ──
+  { name: 'スパニッシュオムレツ', ings: ['卵', 'じゃがいも', '玉ねぎ', 'オリーブ油', '塩', 'こしょう'] },
+  { name: 'エッグベネディクト風', ings: ['卵', '食パン', 'ハム', 'マヨネーズ', 'レモン', '塩'] },
+  { name: '豆腐チャンプルー',     ings: ['豆腐', '卵', 'もやし', 'にら', 'かつお節', '醤油', 'ごま油'] },
+  { name: '麻婆春雨',             ings: ['春雨', '豚ひき肉', '豆板醤', '醤油', '生姜', 'にんにく', 'ごま油'] },
+  { name: '肉豆腐',               ings: ['豚バラ', '豆腐', '玉ねぎ', '醤油', 'みりん', '酒', '砂糖', 'だし'] },
+  { name: '豆腐の味噌田楽',       ings: ['豆腐', '味噌', 'みりん', '砂糖', '白ごま'] },
+  { name: 'ひじきと大豆の煮物',   ings: ['ひじき', '大豆', 'にんじん', '油揚げ', '醤油', 'みりん', '砂糖'] },
+
+  // ── 追加：洋食・エスニック ──
+  { name: 'チキンドリア',         ings: ['鶏もも肉', 'ごはん', '玉ねぎ', 'バター', '小麦粉', '牛乳', 'シュレッドチーズ'] },
+  { name: 'ラザニア',             ings: ['合いびき肉', 'ラザニア', 'トマト缶', '牛乳', 'バター', '小麦粉', 'シュレッドチーズ'] },
+  { name: 'パエリア',             ings: ['えび', 'あさり', 'パプリカ', '玉ねぎ', 'トマト', 'サフラン', 'オリーブ油', '米'] },
+  { name: 'タコライス',           ings: ['牛ひき肉', '玉ねぎ', 'トマト', 'レタス', 'チーズ', 'チリパウダー', 'ごはん'] },
+  { name: 'グリーンカレー',       ings: ['鶏もも肉', 'グリーンカレーペースト', 'ナス', 'ヤングコーン', 'ココナッツミルク', 'ナンプラー'] },
+  { name: 'トムヤムクン',         ings: ['えび', 'しめじ', 'レモングラス', 'ナンプラー', 'ライム', '唐辛子'] },
+  { name: 'パッタイ',             ings: ['ライスヌードル', 'えび', '卵', 'もやし', 'ニラ', 'ナンプラー', 'ライム'] },
+  { name: 'プルコギ',             ings: ['牛切り落とし', '玉ねぎ', 'にら', 'にんじん', '醤油', 'ごま油', 'コチュジャン', '砂糖'] },
+  { name: 'サムゲタン風スープ',   ings: ['鶏もも肉', 'もち米', 'にんにく', '生姜', '長ねぎ', '塩'] },
+  { name: 'チーズタッカルビ',     ings: ['鶏もも肉', 'キャベツ', '玉ねぎ', 'コチュジャン', 'シュレッドチーズ', '醤油'] },
+
 ]
+
+// ── 読みがな→表記の変換テーブル（よく使う食材・料理名）──
+const YOMI_MAP = {
+  // 野菜
+  'にんじん':'人参', 'たまねぎ':'玉ねぎ', 'おたまねぎ':'玉ねぎ',
+  'じゃがいも':'じゃがいも', 'きゃべつ':'キャベツ', 'ほうれんそう':'ほうれん草',
+  'なす':'なす', 'ぴーまん':'ピーマン', 'もやし':'もやし',
+  'こまつな':'小松菜', 'だいこん':'大根', 'かぼちゃ':'かぼちゃ',
+  'ごぼう':'ごぼう', 'ながねぎ':'長ねぎ', 'しょうが':'生姜',
+  'にんにく':'にんにく', 'ずっきーに':'ズッキーニ', 'ぱぷりか':'パプリカ',
+  'はくさい':'白菜', 'すなっぷえんどう':'さやえんどう', 'ぶろっこりー':'ブロッコリー',
+  // 肉・魚
+  'ぶたばら':'豚バラ', 'ぶたにく':'豚肉', 'とりにく':'鶏肉', 'とりもも':'鶏もも肉',
+  'とりむね':'鶏むね肉', 'ぎゅうにく':'牛肉', 'ひきにく':'ひき肉',
+  'さけ':'鮭', 'さば':'さば', 'えび':'えび', 'あさり':'あさり',
+  'たら':'たら', 'ぶり':'ぶり', 'いわし':'いわし', 'あじ':'あじ',
+  // 乳卵・豆腐
+  'たまご':'卵', 'たまご':'卵', 'ぎゅうにゅう':'牛乳', 'ばたー':'バター',
+  'とうふ':'豆腐', 'あつあげ':'厚揚げ', 'あぶらあげ':'油揚げ', 'なっとう':'納豆',
+  // 調味料
+  'しょうゆ':'醤油', 'みりん':'みりん', 'さとう':'砂糖', 'しお':'塩',
+  'みそ':'味噌', 'こめず':'酢', 'ごまあぶら':'ごま油',
+}
+
+// キーワードを正規化：カタカナ→ひらがな→読みがな変換
+function normalizeKeyword(kw) {
+  const hira = kw
+    .toLowerCase()
+    .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/ー/g, '')
+    .trim()
+  // 読みがな→漢字・表記に変換
+  const mapped = YOMI_MAP[hira]
+  return { hira, kanji: mapped || null }
+}
+
+// テキストをひらがな化して比較用に正規化
+function normalizeText(text) {
+  return text
+    .toLowerCase()
+    .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/ー/g, '')
+}
 
 // キーワードで絞り込む
 // 料理名 OR 食材名にマッチするものを返す（食材名で検索→その食材を使う料理）
 export function searchRecipes(keyword) {
-  // 空文字・未指定の場合は全件返す
   if (!keyword || keyword.length < 1) return RECIPE_DB
-  const kw = keyword.toLowerCase()
-    .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)) // カナ→ひら
-    .replace(/ー/g, '')
+
+  const { hira, kanji } = normalizeKeyword(keyword)
+  // 検索に使うキーワード群（ひらがな形＋漢字形＋元のテキスト）
+  const targets = [hira, kanji, keyword.toLowerCase()].filter(Boolean)
+
   return RECIPE_DB.filter(r => {
+    const rName = normalizeText(r.name)
     // 料理名マッチ
-    const nameMatch = r.name.toLowerCase()
-      .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
-      .replace(/ー/g, '')
-      .includes(kw)
-    // 食材名マッチ（ingsで検索）
-    const ingMatch = (r.ings || []).some(ing =>
-      ing.toLowerCase()
-        .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
-        .replace(/ー/g, '')
-        .includes(kw)
-    )
+    const nameMatch = targets.some(t => rName.includes(normalizeText(t)))
+    // 食材名マッチ
+    const ingMatch = (r.ings || []).some(ing => {
+      const ingNorm = normalizeText(ing)
+      return targets.some(t => ingNorm.includes(normalizeText(t)) || normalizeText(t).includes(ingNorm))
+    })
     return nameMatch || ingMatch
   })
 }
@@ -137,8 +265,10 @@ export function searchRecipes(keyword) {
 const GEMINI_ENDPOINTS = [
   { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-2.5-flash'      },
   { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-2.5-flash-lite' },
+  { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-1.5-flash'      }, // 2.5 Quota切れ時のフォールバック
+  { base: 'https://generativelanguage.googleapis.com/v1beta/models', model: 'gemini-1.5-flash-8b'   }, // さらに軽量フォールバック
   { base: 'https://generativelanguage.googleapis.com/v1/models',     model: 'gemini-2.5-flash'      },
-  { base: 'https://generativelanguage.googleapis.com/v1/models',     model: 'gemini-2.5-flash-lite' },
+  { base: 'https://generativelanguage.googleapis.com/v1/models',     model: 'gemini-1.5-flash'      },
 ]
 
 const fetchWithTimeout = (url, options) =>
@@ -155,15 +285,17 @@ const isOAuthLike = (key) =>
 export async function fetchGeminiSuggestions(keyword, apiKey) {
   if (!apiKey || !keyword) return []
 
-  // キーワードが料理名か食材名かを判定（ひらがな2文字以下の単語は食材の可能性が高い）
-  const looksLikeIngredient = /^[ぁ-ん]{1,5}$|^[一-龯]{1,3}$/.test(keyword.trim())
+  // 読みがな→漢字に変換してGeminiに渡す（「しょうが」→「生姜」の方が精度が上がる）
+  const { hira: kwHira, kanji: kwKanji } = normalizeKeyword(keyword)
+  const geminiKw = kwKanji || keyword  // 漢字変換できた方を使う
+  const looksLikeIngredient = /^[ぁ-ん]{2,6}$|^[一-龯]{1,4}$|^[ァ-ン]{2,6}$/.test(keyword.trim())
   const prompt = looksLikeIngredient
     ? `日本の家庭料理のサジェストをしてください。
-「${keyword}」を主な食材として使う料理を8品提案してください。
+「${geminiKw}」を主な食材として使う料理を8品提案してください。
 必ずJSON配列のみで返答し、前後に説明文・コードブロック記号は絶対に含めないこと。
-形式: [{"name":"料理名","ings":["${keyword}","食材2","食材3"]}]`
+形式: [{"name":"料理名","ings":["${geminiKw}","食材2","食材3"]}]`
     : `日本の家庭料理のサジェストをしてください。
-「${keyword}」を使った、または「${keyword}」という名前を含む料理を8品提案してください。
+「${geminiKw}」を使った、または「${geminiKw}」という名前を含む料理を8品提案してください。
 必ずJSON配列のみで返答し、前後に説明文・コードブロック記号は絶対に含めないこと。
 形式: [{"name":"料理名","ings":["主な食材1","食材2","食材3"]}]`
 
@@ -214,7 +346,7 @@ export async function fetchGeminiSuggestions(keyword, apiKey) {
         isQuota = status === 'RESOURCE_EXHAUSTED' || msg.toLowerCase().includes('quota')
       } catch {}
       if (isQuota) { errors.push(`${model}(429 QUOTA): 次のモデルへ`); continue }
-      throw new Error('⚠️ レート上限（429）\n1〜2分待ってから再試行してください。')
+      throw new Error('リクエストが集中しています。1〜2分待ってから再試行してください。')
     }
 
     if (res.status === 404) { errors.push(`${model}(404): not found`); continue }
@@ -223,7 +355,7 @@ export async function fetchGeminiSuggestions(keyword, apiKey) {
       const err = await res.json().catch(() => ({}))
       const msg = err?.error?.message || ''
       if (msg.includes('API_KEY') || msg.includes('key')) {
-        throw new Error(`❌ APIキーエラー\n設定タブでAPIキーを確認してください。`)
+        throw new Error('APIキーが正しくありません。設定タブで確認してください。')
       }
       errors.push(`${model}(400): ${msg.slice(0, 50)}`); continue
     }
@@ -250,7 +382,18 @@ export async function fetchGeminiSuggestions(keyword, apiKey) {
     }
   }
 
-  // 全モデル失敗 — エラーをthrowして呼び出し元で画面表示させる
-  const errMsg = errors.join(' / ')
-  throw new Error(errMsg || 'すべてのモデルで失敗しました')
+  // 全モデル失敗 — ユーザー向けのわかりやすいメッセージに変換
+  const allQuota   = errors.every(e => e.includes('QUOTA') || e.includes('429'))
+  const hasAuthErr = errors.some(e => e.includes('401') || e.includes('400') || e.includes('API_KEY'))
+  const hasNetwork = errors.some(e => e.includes('ネットワーク') || e.includes('TIMEOUT'))
+
+  if (hasAuthErr) {
+    throw new Error('APIキーが無効です。設定タブで正しいキーを入力してください。')
+  } else if (allQuota) {
+    throw new Error('本日の無料枠（250回/日）を使い切りました。夕方4〜5時（日本時間）にリセットされます。')
+  } else if (hasNetwork) {
+    throw new Error('ネットに接続できません。通信状態を確認してください。')
+  } else {
+    throw new Error('Gemini AIに接続できませんでした。しばらく待ってから再試行してください。')
+  }
 }
