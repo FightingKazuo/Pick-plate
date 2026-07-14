@@ -101,14 +101,29 @@ export const RECIPE_DB = [
   { name: 'ポトフ', ings: ['鶏もも肉', 'ウインナー', 'にんじん', '玉ねぎ', 'じゃがいも', 'キャベツ', 'コンソメ'] },
 ]
 
-// キーワードで絞り込む（前方一致・部分一致）
+// キーワードで絞り込む
+// 料理名 OR 食材名にマッチするものを返す（食材名で検索→その食材を使う料理）
 export function searchRecipes(keyword) {
-  // 空文字・未指定の場合は全件返す（入力ページの初期一覧用）
+  // 空文字・未指定の場合は全件返す
   if (!keyword || keyword.length < 1) return RECIPE_DB
   const kw = keyword.toLowerCase()
-  return RECIPE_DB.filter(r =>
-    r.name.toLowerCase().includes(kw)
-  )
+    .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)) // カナ→ひら
+    .replace(/ー/g, '')
+  return RECIPE_DB.filter(r => {
+    // 料理名マッチ
+    const nameMatch = r.name.toLowerCase()
+      .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+      .replace(/ー/g, '')
+      .includes(kw)
+    // 食材名マッチ（ingsで検索）
+    const ingMatch = (r.ings || []).some(ing =>
+      ing.toLowerCase()
+        .replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+        .replace(/ー/g, '')
+        .includes(kw)
+    )
+    return nameMatch || ingMatch
+  })
 }
 
 // ============================================================
@@ -140,7 +155,14 @@ const isOAuthLike = (key) =>
 export async function fetchGeminiSuggestions(keyword, apiKey) {
   if (!apiKey || !keyword) return []
 
-  const prompt = `日本の家庭料理のサジェストをしてください。
+  // キーワードが料理名か食材名かを判定（ひらがな2文字以下の単語は食材の可能性が高い）
+  const looksLikeIngredient = /^[ぁ-ん]{1,5}$|^[一-龯]{1,3}$/.test(keyword.trim())
+  const prompt = looksLikeIngredient
+    ? `日本の家庭料理のサジェストをしてください。
+「${keyword}」を主な食材として使う料理を8品提案してください。
+必ずJSON配列のみで返答し、前後に説明文・コードブロック記号は絶対に含めないこと。
+形式: [{"name":"料理名","ings":["${keyword}","食材2","食材3"]}]`
+    : `日本の家庭料理のサジェストをしてください。
 「${keyword}」を使った、または「${keyword}」という名前を含む料理を8品提案してください。
 必ずJSON配列のみで返答し、前後に説明文・コードブロック記号は絶対に含めないこと。
 形式: [{"name":"料理名","ings":["主な食材1","食材2","食材3"]}]`
@@ -228,6 +250,7 @@ export async function fetchGeminiSuggestions(keyword, apiKey) {
     }
   }
 
-  // 全モデル失敗
-  throw new Error(`Gemini APIエラー\n${errors.map(e => `・${e}`).join('\n')}`)
+  // 全モデル失敗 — エラーをthrowして呼び出し元で画面表示させる
+  const errMsg = errors.join(' / ')
+  throw new Error(errMsg || 'すべてのモデルで失敗しました')
 }
