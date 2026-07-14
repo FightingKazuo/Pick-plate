@@ -4,6 +4,122 @@ import { DEFAULT_TEMPLATES, getTemplatesForMeal } from './MealPlan'
 import { DEFAULT_STAPLES } from '../App'
 
 
+// ════════════════════════════════
+// マイセット管理
+// ════════════════════════════════
+function MySetManager() {
+  const [sets,      setSets]      = useState(() => { try { return JSON.parse(localStorage.getItem('mySets')||'[]') } catch { return [] } })
+  const [creating,  setCreating]  = useState(false)
+  const [editIdx,   setEditIdx]   = useState(null)
+  const [setName,   setSetName]   = useState('')
+  const [mealInput, setMealInput] = useState('')
+  const [mealList,  setMealList]  = useState([])  // [{name, ings:[]}]
+  const [expandIdx, setExpandIdx] = useState(null)
+
+  const saveSets = (next) => {
+    localStorage.setItem('mySets', JSON.stringify(next))
+    setSets(next)
+  }
+
+  const openCreate = () => {
+    setSetName(''); setMealList([]); setMealInput(''); setCreating(true); setEditIdx(null)
+  }
+  const openEdit = (i) => {
+    setSetName(sets[i].name); setMealList([...sets[i].meals]); setMealInput(''); setEditIdx(i); setCreating(true)
+  }
+
+  const addMeal = () => {
+    const v = mealInput.trim(); if (!v) return
+    setMealList(prev => [...prev, { name: v, ings: [] }])
+    setMealInput('')
+  }
+  const removeMeal = (i) => setMealList(prev => prev.filter((_,j)=>j!==i))
+
+  const saveSet = () => {
+    if (!setName.trim() || mealList.length === 0) return
+    const entry = { name: setName.trim(), meals: mealList }
+    const next = editIdx !== null
+      ? sets.map((s,i) => i===editIdx ? entry : s)
+      : [...sets, entry]
+    saveSets(next)
+    setCreating(false); setEditIdx(null)
+  }
+  const deleteSet = (i) => saveSets(sets.filter((_,j)=>j!==i))
+
+  return (
+    <div>
+      {sets.length === 0 && !creating && (
+        <div style={{fontSize:12, color:'var(--text3)', marginBottom:10}}>
+          まだセットがありません。よく食べる料理の組み合わせを登録しておくと、献立入力時に一括追加できます。
+        </div>
+      )}
+
+      {sets.map((set, i) => (
+        <div key={i} style={{marginBottom:8, border:'.5px solid var(--border)', borderRadius:'var(--rs)', overflow:'hidden'}}>
+          <div style={{display:'flex', alignItems:'center', padding:'9px 12px', background:'var(--surface2)', cursor:'pointer'}}
+            onClick={() => setExpandIdx(expandIdx===i?null:i)}>
+            <span style={{flex:1, fontSize:13, fontWeight:500}}>{set.name}</span>
+            <span style={{fontSize:11, color:'var(--text3)', marginRight:10}}>{set.meals.length}品</span>
+            <button onClick={e=>{e.stopPropagation();openEdit(i)}} style={{fontSize:11,padding:'2px 8px',border:'.5px solid var(--border2)',borderRadius:4,background:'none',cursor:'pointer',color:'var(--text2)',marginRight:4}}>編集</button>
+            <button onClick={e=>{e.stopPropagation();deleteSet(i)}} style={{fontSize:11,padding:'2px 8px',border:'none',borderRadius:4,background:'var(--red-l)',cursor:'pointer',color:'var(--red)'}}>削除</button>
+          </div>
+          {expandIdx===i && (
+            <div style={{padding:'8px 12px'}}>
+              {set.meals.map((m,j)=>(
+                <div key={j} style={{fontSize:12, padding:'3px 0', borderBottom:'.5px solid var(--border)', color:'var(--text2)'}}>🍽 {m.name}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {creating ? (
+        <div style={{background:'var(--surface2)', borderRadius:'var(--rs)', padding:12, marginTop:8}}>
+          <div style={{fontSize:11, color:'var(--text3)', marginBottom:8, fontWeight:500}}>
+            {editIdx!==null ? 'セットを編集' : '新しいセットを作成'}
+          </div>
+          <input value={setName} onChange={e=>setSetName(e.target.value)} placeholder="セット名（例：夜の定番、週末ランチ）"
+            style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:8}} />
+
+          <div style={{marginBottom:6}}>
+            {mealList.map((m,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',padding:'5px 8px',background:'var(--green-l)',borderRadius:'var(--rs)',marginBottom:4}}>
+                <span style={{flex:1,fontSize:13,color:'var(--green)',fontWeight:500}}>🍽 {m.name}</span>
+                <button onClick={()=>removeMeal(i)} style={{fontSize:14,color:'var(--text3)',border:'none',background:'none',cursor:'pointer'}}>×</button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:'flex',gap:6,marginBottom:10}}>
+            <input value={mealInput} onChange={e=>setMealInput(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&addMeal()}
+              placeholder="料理名を入力してEnter（例：ビーフシチュー）"
+              style={{flex:1,padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none'}} />
+            <button onClick={addMeal} style={{padding:'8px 12px',background:'var(--green)',color:'#fff',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer'}}>追加</button>
+          </div>
+
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>{setCreating(false);setEditIdx(null)}}
+              style={{flex:1,padding:'8px',background:'var(--surface)',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'var(--text2)'}}>
+              キャンセル
+            </button>
+            <button onClick={saveSet} disabled={!setName.trim()||mealList.length===0}
+              style={{flex:1,padding:'8px',background:'var(--green)',color:'#fff',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',fontWeight:500,
+                opacity:(!setName.trim()||mealList.length===0)?0.5:1}}>
+              保存
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={openCreate}
+          style={{width:'100%',marginTop:8,padding:'9px',background:'none',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',fontSize:13,color:'var(--text3)',cursor:'pointer'}}>
+          ＋ 新しいセットを作成
+        </button>
+      )}
+    </div>
+  )
+}
+
 // 料理ごとの除外食材管理
 function ExclusionManager() {
   const [exc, setExc] = useState(() => {
@@ -135,8 +251,15 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   return (
     <div style={s.page}>
 
-      {/* ── 朝ごはんテンプレート ── */}
-      <div style={{ ...s.sec, marginTop: 0 }}>朝ごはんテンプレート</div>
+      {/* ── マイセット ── */}
+      <div style={{ ...s.sec, marginTop: 0 }}>Myセット</div>
+      <div style={s.card}>
+        <label style={s.label}>よく食べる料理の組み合わせをセットとして登録。献立入力時にワンタップで全品まとめて追加できます。</label>
+        <MySetManager />
+      </div>
+
+      {/* ── テンプレート ── */}
+      <div style={s.sec}>テンプレート</div>
       <div style={s.card}>
         <label style={s.label}>朝・昼・夜それぞれの入力時に表示されるワンタップ選択肢です。</label>
 
