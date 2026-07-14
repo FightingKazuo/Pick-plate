@@ -110,23 +110,69 @@ if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
 }
 
 // ════════════════════════════════════════════
-// 食材パネル
+// 食材パネル（編集・除外・カスタム保存対応）
 // ════════════════════════════════════════════
-function IngPanel({ mealName, ings, staples }) {
+function IngPanel({ mealName, defaultIngs, staples }) {
+  // カスタム食材 or デフォルト食材
+  const [ings,     setIngs]     = useState(() => resolveIngs(mealName, defaultIngs))
   const [excluded, setExcluded] = useState(() => getExcludedIngs(mealName))
-  if (!ings?.length) return null
-  const toggle = (ing) => setExcluded(toggleExcludeIng(mealName, ing))
+  const [editing,  setEditing]  = useState(false)
+  const [newIng,   setNewIng]   = useState('')
+
+  const toggleExclude = (ing) => setExcluded(toggleExcludeIng(mealName, ing))
+
+  const removeIng = (ing) => {
+    const next = ings.filter(x => x !== ing)
+    setIngs(next)
+    saveCustomIngs(mealName, next)
+  }
+
+  const addIng = () => {
+    const v = newIng.trim()
+    if (!v || ings.includes(v)) return
+    const next = [...ings, v]
+    setIngs(next)
+    saveCustomIngs(mealName, next)
+    setNewIng('')
+  }
+
+  const resetToDefault = () => {
+    saveCustomIngs(mealName, defaultIngs || [])
+    setIngs(defaultIngs || [])
+  }
+
   return (
     <div style={{padding:'8px 11px 11px', borderTop:'.5px solid rgba(45,106,79,.2)'}}>
-      <div style={{fontSize:10, color:'var(--text3)', marginBottom:6}}>
-        食材をタップして除外（取消線＝今後も自動除外）
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+        <span style={{fontSize:10, color:'var(--text3)'}}>
+          {editing ? '食材を編集（タップで削除）' : '食材をタップで除外（次回も自動除外）'}
+        </span>
+        <div style={{display:'flex', gap:4}}>
+          <button onClick={() => setEditing(v=>!v)} style={{fontSize:10, padding:'2px 7px', border:'.5px solid var(--border2)', borderRadius:10, background:'none', cursor:'pointer', color:'var(--text3)'}}>
+            {editing ? '完了' : '✏️ 編集'}
+          </button>
+          {editing && (
+            <button onClick={resetToDefault} style={{fontSize:10, padding:'2px 7px', border:'.5px solid var(--border2)', borderRadius:10, background:'none', cursor:'pointer', color:'var(--text3)'}}>
+              リセット
+            </button>
+          )}
+        </div>
       </div>
-      <div style={{display:'flex', flexWrap:'wrap', gap:4}}>
+
+      <div style={{display:'flex', flexWrap:'wrap', gap:4, marginBottom: editing?8:0}}>
         {ings.map((ing,i) => {
           const isExc = excluded.includes(ing)
           const isSt  = staples?.some(s=>ing.includes(s)||s.includes(ing))
+          if (editing) {
+            return (
+              <button key={i} onClick={() => removeIng(ing)} style={{
+                fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer',
+                background:'var(--red-l)', color:'var(--red)',
+              }}>✕ {ing}</button>
+            )
+          }
           return (
-            <button key={i} onClick={() => toggle(ing)} style={{
+            <button key={i} onClick={() => toggleExclude(ing)} style={{
               fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer', transition:'all .12s',
               background: isExc?'#eee': isSt?'var(--surface2)':'var(--green-l)',
               color:      isExc?'#bbb': isSt?'var(--text3)':'var(--green)',
@@ -137,7 +183,23 @@ function IngPanel({ mealName, ings, staples }) {
           )
         })}
       </div>
-      {excluded.length>0 && <div style={{fontSize:10,color:'var(--text3)',marginTop:5}}>✕ {excluded.join('・')} は今後も自動除外</div>}
+
+      {editing && (
+        <div style={{display:'flex', gap:5, marginTop:4}}>
+          <input
+            value={newIng}
+            onChange={e=>setNewIng(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&addIng()}
+            placeholder="食材を追加..."
+            style={{flex:1, padding:'6px 9px', border:'.5px solid var(--border2)', borderRadius:'var(--rs)', fontSize:12, outline:'none'}}
+          />
+          <button onClick={addIng} style={{padding:'6px 10px', background:'var(--green)', color:'#fff', border:'none', borderRadius:'var(--rs)', fontSize:12, cursor:'pointer'}}>追加</button>
+        </div>
+      )}
+
+      {!editing && excluded.length>0 && (
+        <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>✕ {excluded.join('・')} は今後も自動除外</div>
+      )}
     </div>
   )
 }
@@ -471,10 +533,14 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const getList = (key) => { const v=meals[key]; return Array.isArray(v)?v:v?[v]:[] }
 
   const addMeal = (key, meal) => {
-    const excluded = getExcludedIngs(meal.name)
-    const addIngs  = (meal.ings||[]).filter(ing=>!excluded.includes(ing))
-    if (addIngs.length>0) onAddToList(addIngs, meal.name)
-    onUpdate({ meals:{...meals,[key]:[...getList(key),meal]} })
+    const excluded  = getExcludedIngs(meal.name)
+    // カスタム食材があればそちらを優先
+    const baseIngs  = resolveIngs(meal.name, meal.ings || [])
+    const addIngs   = baseIngs.filter(ing => !excluded.includes(ing))
+    if (addIngs.length > 0) onAddToList(addIngs, meal.name)
+    // mealオブジェクトにも最新の食材を反映
+    const mealToSave = { ...meal, ings: baseIngs }
+    onUpdate({ meals:{...meals,[key]:[...getList(key), mealToSave]} })
   }
   const removeMeal = (key, idx) => {
     const list = getList(key).filter((_,i)=>i!==idx)
