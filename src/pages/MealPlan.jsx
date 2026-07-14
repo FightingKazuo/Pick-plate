@@ -5,48 +5,36 @@ const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','
 const DAY_SHORT = ['日','月','火','水','木','金','土']
 const MEALS     = ['朝','昼','夜']
 
-export const DEFAULT_TEMPLATES = {
-  朝: [
-    { id:'a1', name:'ヨーグルト',   ings:[] },
-    { id:'a2', name:'冷奴',         ings:['豆腐'] },
-    { id:'a3', name:'バナナ',       ings:['バナナ'] },
-    { id:'a4', name:'トースト',     ings:['食パン','バター'] },
-    { id:'a5', name:'目玉焼き',     ings:['卵'] },
-    { id:'a6', name:'おにぎり',     ings:[] },
-    { id:'a7', name:'納豆',         ings:['納豆'] },
-    { id:'a8', name:'フルーツ',     ings:[] },
-  ],
-  昼: [
-    { id:'l1', name:'サンドイッチ', ings:['食パン','ハム','レタス','トマト'] },
-    { id:'l2', name:'サラダ',       ings:['レタス','トマト','きゅうり'] },
-    { id:'l3', name:'おにぎり',     ings:[] },
-    { id:'l4', name:'パスタ',       ings:['パスタ'] },
-    { id:'l5', name:'そうめん',     ings:['そうめん','長ねぎ','生姜','醤油','みりん'] },
-    { id:'l6', name:'うどん',       ings:['うどん','だし','醤油','みりん'] },
-    { id:'l7', name:'チャーハン',   ings:['ごはん','卵','長ねぎ','醤油','ごま油'] },
-    { id:'l8', name:'カレー（残り）',ings:[] },
-  ],
-  夜: [
-    { id:'e1', name:'味噌汁',       ings:['豆腐','わかめ','長ねぎ'] },
-    { id:'e2', name:'サラダ',       ings:['レタス','トマト','きゅうり'] },
-    { id:'e3', name:'パン',         ings:['食パン','バター'] },
-    { id:'e4', name:'カプレーゼ',   ings:['トマト','モッツァレラチーズ','バジル','オリーブ油'] },
-    { id:'e5', name:'ビーフシチュー',ings:['牛すね肉','玉ねぎ','にんじん','じゃがいも','デミグラスソース缶'] },
-    { id:'e6', name:'ごはん',       ings:[] },
-    { id:'e7', name:'漬物',         ings:[] },
-    { id:'e8', name:'冷奴',         ings:['豆腐'] },
-  ],
-}
+// デフォルトMyセット（初回起動時）
+export const DEFAULT_MYSETS = [
+  {
+    name: '和食の朝',
+    meals: [
+      { name: 'ごはん',     ings: [] },
+      { name: '味噌汁',     ings: ['豆腐','わかめ','長ねぎ'] },
+      { name: '納豆',       ings: ['納豆'] },
+    ]
+  },
+  {
+    name: '洋食の朝',
+    meals: [
+      { name: 'トースト',   ings: ['食パン','バター'] },
+      { name: '目玉焼き',   ings: ['卵'] },
+      { name: 'サラダ',     ings: ['レタス','トマト','きゅうり'] },
+    ]
+  },
+  {
+    name: '軽め朝食',
+    meals: [
+      { name: 'ヨーグルト', ings: [] },
+      { name: 'バナナ',     ings: ['バナナ'] },
+    ]
+  },
+]
 
-// mealLabel（朝/昼/夜）に対応したテンプレート配列を返す
-export function getTemplatesForMeal(templates, mealLabel) {
-  if (templates && !Array.isArray(templates)) {
-    // 時間帯別オブジェクト形式
-    return templates[mealLabel] || templates['朝'] || []
-  }
-  // 旧形式（配列）の場合はそのまま返す（後方互換）
-  return templates || []
-}
+// 後方互換のためのダミーエクスポート（Settings.jsxから参照）
+export const DEFAULT_TEMPLATES = DEFAULT_MYSETS
+export function getTemplatesForMeal() { return [] }
 
 // ── 日付 ──
 function getDisplayDates() {
@@ -102,7 +90,8 @@ function addCustomMenu(meal) {
 }
 
 // ── マイセット（複数料理をまとめて登録）──
-function getMySets() {
+// localStorageから取得（Firebase版はdataから受け取る）
+function getMySetsLocal() {
   try { return JSON.parse(localStorage.getItem('mySets') || '[]') } catch { return [] }
 }
 
@@ -117,9 +106,9 @@ if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
 // ════════════════════════════════════════════
 // マイセットセクション
 // ════════════════════════════════════════════
-function MySetsSection({ onAddSet, confirmedNames }) {
-  const [sets, setSets] = useState(getMySets)
-  const [hov, setHov]   = useState(null)
+function MySetsSection({ mySets, onAddSet, confirmedNames }) {
+  const sets = mySets
+  const [hov, setHov] = useState(null)
 
   if (sets.length === 0) return null
 
@@ -256,12 +245,11 @@ function IngPanel({ mealName, defaultIngs, staples }) {
 const SUGGEST_INIT = 20   // 初期表示件数
 const SUGGEST_MORE = 20   // 「もっと見る」で追加する件数
 
-function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, onRemove, onDone }) {
+function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onRemove, onDone }) {
   const [query,      setQuery]      = useState('')
   const [aiResults,  setAiResults]  = useState([])
   const [aiLoading,  setAiLoading]  = useState(false)
   const [aiError,    setAiError]    = useState('')
-  const [selTmpls,   setSelTmpls]   = useState([])
   const [expandIdx,  setExpandIdx]  = useState(null)
   const [showCount,  setShowCount]  = useState(SUGGEST_INIT)
   const [doneAnim,   setDoneAnim]   = useState(false)
@@ -328,11 +316,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
   }
 
   // テンプレ
-  const toggleTmpl = (t) => setSelTmpls(prev=>prev.find(x=>x.id===t.id)?prev.filter(x=>x.id!==t.id):[...prev,t])
-  const confirmTmpls = () => {
-    selTmpls.forEach(t => { onAdd({name:t.name,ings:t.ings||[]}); addHistory({name:t.name,ings:t.ings||[]}) })
-    setSelTmpls([]); setHistList(getHistory())
-  }
+
 
   // カスタムメニュー追加
   const saveCustom = () => {
@@ -397,32 +381,15 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
           </div>
         )}
 
-        {/* マイセット */}
-        <MySetsSection onAddSet={(meals) => {
+        {/* Myセット */}
+        <MySetsSection mySets={mySets} onAddSet={(meals) => {
           meals.forEach(m => {
             onAdd({ name: m.name, ings: m.ings || [] })
             addHistory({ name: m.name, ings: m.ings || [] })
           })
         }} confirmedNames={confirmedNames} />
 
-        {/* テンプレート */}
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>テンプレート</div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-            {templates.map(t=>(
-              <button key={t.id} onClick={()=>toggleTmpl(t)} style={{
-                padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:selTmpls.find(x=>x.id===t.id)?500:400,transition:'all .12s',
-                background:selTmpls.find(x=>x.id===t.id)?'var(--green)':'var(--surface2)',
-                color:selTmpls.find(x=>x.id===t.id)?'#fff':'var(--text2)',
-              }}>{selTmpls.find(x=>x.id===t.id)?'✓ ':''}{t.name}</button>
-            ))}
-          </div>
-          {selTmpls.length>0 && (
-            <button onClick={confirmTmpls} style={{width:'100%',marginTop:8,padding:'9px',background:'var(--green)',color:'#fff',border:'none',borderRadius:'var(--rs)',fontSize:13,fontWeight:500,cursor:'pointer'}}>
-              {selTmpls.map(t=>t.name).join('・')} を追加
-            </button>
-          )}
-        </div>
+
 
         {/* 検索 */}
         <div style={{marginBottom:12}}>
@@ -569,15 +536,13 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
 export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const dates     = getDisplayDates()
   const meals     = data?.meals     || {}
-  const templates = data?.templates || DEFAULT_TEMPLATES
+  // Myセット：Firebase保存 or localStorageフォールバック
+  const mySets    = (data?.mySets && data.mySets.length > 0)
+    ? data.mySets
+    : getMySetsLocal().length > 0 ? getMySetsLocal() : DEFAULT_MYSETS
+
   const rowRefs   = useRef([])
-  // 時間帯別テンプレ取得（空の場合はDEFAULT_TEMPLATESにフォールバック）
-  const getTemplates = (mealLabel) => {
-    const tmpl = getTemplatesForMeal(templates, mealLabel)
-    if (tmpl && tmpl.length > 0) return tmpl
-    // フォールバック：DEFAULT_TEMPLATESから取得
-    return getTemplatesForMeal(DEFAULT_TEMPLATES, mealLabel)
-  }
+
   const [inputTarget, setInputTarget] = useState(null)
 
   useEffect(() => {
@@ -662,7 +627,7 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
           dayLabel={inputTarget.dayLabel}
           mealLabel={inputTarget.mealLabel}
           confirmed={getList(inputTarget.key)}
-          templates={getTemplates(inputTarget.mealLabel)}
+          mySets={mySets}
           staples={staples}
           onAdd={meal=>addMeal(inputTarget.key,meal)}
           onRemove={idx=>removeMeal(inputTarget.key,idx)}
