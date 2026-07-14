@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
 
 const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日']
@@ -16,7 +16,7 @@ export const DEFAULT_TEMPLATES = [
   { id:8, name:'納豆',       ings:['納豆'] },
 ]
 
-// ── 日付ユーティリティ ──
+// ── 日付 ──
 function getDisplayDates() {
   const today = new Date()
   const base  = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -29,346 +29,347 @@ function slotKey(date, meal) {
 }
 function isToday(d) {
   const t = new Date()
-  return d.getFullYear()===t.getFullYear() && d.getMonth()===t.getMonth() && d.getDate()===t.getDate()
+  return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate()
 }
 const TODAY_IDX = 2
 
-// ── 除外食材（localStorage）──
-function getExcludedIngs(mealName) {
-  try { return (JSON.parse(localStorage.getItem('mealExclusions')||'{}')||{})[mealName]||[] } catch { return [] }
+// ── 除外食材 ──
+function getExclusionMap() {
+  try { return JSON.parse(localStorage.getItem('mealExclusions')||'{}') } catch { return {} }
 }
+function getExcludedIngs(mealName) { return getExclusionMap()[mealName]||[] }
 function toggleExcludeIng(mealName, ing) {
-  try {
-    const exc = JSON.parse(localStorage.getItem('mealExclusions')||'{}')
-    const cur = exc[mealName]||[]
-    exc[mealName] = cur.includes(ing) ? cur.filter(x=>x!==ing) : [...cur, ing]
-    localStorage.setItem('mealExclusions', JSON.stringify(exc))
-    return exc[mealName]
-  } catch { return [] }
+  const exc = getExclusionMap()
+  const cur = exc[mealName]||[]
+  exc[mealName] = cur.includes(ing) ? cur.filter(x=>x!==ing) : [...cur, ing]
+  localStorage.setItem('mealExclusions', JSON.stringify(exc))
+  return exc[mealName]
 }
 
-// ── 履歴（localStorage）──
+// ── 履歴 ──
 function getHistory() {
   try { return JSON.parse(localStorage.getItem('mealHistory')||'[]') } catch { return [] }
 }
 function addHistory(meal) {
-  const next = [meal, ...getHistory().filter(m=>m.name!==meal.name)].slice(0,30)
+  const next = [meal, ...getHistory().filter(m=>m.name!==meal.name)].slice(0,50)
   localStorage.setItem('mealHistory', JSON.stringify(next))
 }
+function removeHistory(name) {
+  localStorage.setItem('mealHistory', JSON.stringify(getHistory().filter(m=>m.name!==name)))
+}
 
-// ── アニメーション注入 ──
+// ── カスタムメニュー（ユーザーが追加した独自レシピ）──
+function getCustomMenus() {
+  try { return JSON.parse(localStorage.getItem('customMenus')||'[]') } catch { return [] }
+}
+function addCustomMenu(meal) {
+  const cur = getCustomMenus()
+  if (!cur.find(m=>m.name===meal.name)) {
+    localStorage.setItem('customMenus', JSON.stringify([...cur, meal]))
+  }
+}
+
+// ── アニメーション ──
 if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
   const st = document.createElement('style')
-  st.id = 'pp-anim'
-  st.textContent = '@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}} @keyframes pp-slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}} @keyframes pp-slideOut{from{transform:translateX(0)}to{transform:translateX(100%)}}'
+  st.id='pp-anim'
+  st.textContent='@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}} @keyframes pp-slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}'
   document.head.appendChild(st)
 }
 
 // ════════════════════════════════════════════
-// 入力ページ（全画面）
-// ════════════════════════════════════════════
-const ip = {
-  page: {
-    position:'fixed', inset:0, background:'var(--bg)',
-    zIndex:500, display:'flex', flexDirection:'column',
-    animation:'pp-slideIn .22s ease',
-  },
-  header: {
-    padding:'14px 16px 12px', background:'var(--surface)',
-    borderBottom:'.5px solid var(--border)', flexShrink:0,
-    display:'flex', alignItems:'center', gap:12,
-  },
-  backBtn: {
-    width:34, height:34, borderRadius:'50%', border:'none',
-    background:'var(--surface2)', fontSize:18, cursor:'pointer',
-    display:'flex', alignItems:'center', justifyContent:'center',
-    color:'var(--text2)', flexShrink:0,
-  },
-  headerInfo: { flex:1 },
-  headerTitle: { fontSize:15, fontWeight:600 },
-  headerSub:   { fontSize:11, color:'var(--text3)', marginTop:1 },
-
-  body: { flex:1, overflowY:'auto', padding:'14px', paddingBottom:100 },
-
-  sec:     { fontSize:10, fontWeight:600, color:'var(--text3)', letterSpacing:'.8px', textTransform:'uppercase', marginBottom:8, marginTop:18 },
-  secFirst:{ marginTop:0 },
-
-  // 追加済み
-  addedList: { display:'flex', flexDirection:'column', gap:5, marginBottom:4 },
-  addedChip: { background:'var(--green-l)', borderRadius:'var(--rs)', overflow:'hidden' },
-  addedHead: { display:'flex', alignItems:'center', gap:6, padding:'9px 11px', cursor:'pointer' },
-  addedName: { flex:1, fontSize:14, fontWeight:500, color:'var(--green)' },
-  addedDel:  { fontSize:16, color:'var(--text3)', padding:'0 2px', cursor:'pointer', lineHeight:1 },
-  addedBadge:{ fontSize:9, background:'rgba(45,106,79,.15)', color:'var(--green)', borderRadius:4, padding:'1px 5px', marginLeft:4 },
-
-  // 食材パネル
-  ingPanel: { padding:'8px 11px 11px', borderTop:'.5px solid rgba(45,106,79,.2)' },
-  ingLabel: { fontSize:10, color:'var(--text3)', marginBottom:6 },
-  ingList:  { display:'flex', flexWrap:'wrap', gap:4 },
-  ingBtn:   (exc, st) => ({
-    fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer', transition:'all .12s',
-    background: exc?'#eee': st?'var(--surface2)':'var(--green-l)',
-    color:      exc?'#bbb': st?'var(--text3)':'var(--green)',
-    textDecoration: exc?'line-through':'none',
-  }),
-
-  // テンプレート
-  tmplGrid: { display:'flex', flexWrap:'wrap', gap:6 },
-  tmplBtn:  (sel) => ({
-    padding:'6px 14px', borderRadius:20, border:'none', cursor:'pointer', fontSize:13, fontWeight:sel?500:400, transition:'all .12s',
-    background: sel?'var(--green)':'var(--surface2)',
-    color:      sel?'#fff':'var(--text2)',
-  }),
-  addSelBtn: {
-    width:'100%', marginTop:10, padding:'9px', background:'var(--green)', color:'#fff',
-    border:'none', borderRadius:'var(--rs)', fontSize:13, fontWeight:500, cursor:'pointer',
-  },
-
-  // 検索
-  searchInp: {
-    width:'100%', padding:'11px 13px', border:'.5px solid var(--border2)',
-    borderRadius:'var(--rs)', fontSize:14, outline:'none', background:'var(--surface)',
-    color:'var(--text)', transition:'border-color .15s',
-  },
-  searchWrap: { position:'relative' },
-  dropdown: {
-    position:'absolute', top:'calc(100% + 4px)', left:0, right:0,
-    background:'var(--surface)', border:'.5px solid var(--border)',
-    borderRadius:'var(--r)', boxShadow:'0 8px 24px rgba(0,0,0,.12)',
-    zIndex:600, maxHeight:280, overflowY:'auto',
-  },
-  dropItem: (hov) => ({
-    padding:'10px 13px', cursor:'pointer', borderBottom:'.5px solid var(--border)',
-    background: hov?'var(--green-l)':'transparent', transition:'background .1s',
-  }),
-  dropName: { fontSize:14, fontWeight:500 },
-  dropIngs: { fontSize:11, color:'var(--text3)', marginTop:2 },
-  aiLabel:  { fontSize:9, background:'var(--green-l)', color:'var(--green)', borderRadius:3, padding:'1px 5px', marginLeft:5 },
-  loadRow:  { padding:'10px 13px', fontSize:12, color:'var(--text3)', display:'flex', alignItems:'center', gap:6 },
-  dot:      { width:5, height:5, borderRadius:'50%', background:'var(--green)', display:'inline-block' },
-
-  // 履歴
-  histItem: (hov) => ({
-    display:'flex', alignItems:'center', padding:'10px 6px',
-    borderBottom:'.5px solid var(--border)', cursor:'pointer',
-    background: hov?'var(--surface2)':'transparent', borderRadius:'var(--rs)',
-    transition:'background .1s',
-  }),
-  histName: { flex:1, fontSize:13 },
-  histAdd:  { fontSize:18, color:'var(--green)', padding:'0 4px', fontWeight:300 },
-
-  // フッター
-  footer: {
-    position:'fixed', bottom:0, left:0, right:0,
-    padding:'10px 14px', paddingBottom:'calc(10px + env(safe-area-inset-bottom))',
-    background:'var(--surface)', borderTop:'.5px solid var(--border)',
-    display:'flex', gap:8,
-  },
-  doneBtn: (done) => ({
-    flex:1, padding:'12px', border:'none', borderRadius:'var(--rs)',
-    fontSize:14, fontWeight:600, cursor:'pointer', transition:'background .2s',
-    background: done?'#52B788':'var(--green)', color:'#fff',
-  }),
-}
-
 // 食材パネル
+// ════════════════════════════════════════════
 function IngPanel({ mealName, ings, staples }) {
   const [excluded, setExcluded] = useState(() => getExcludedIngs(mealName))
   if (!ings?.length) return null
   const toggle = (ing) => setExcluded(toggleExcludeIng(mealName, ing))
   return (
-    <div style={ip.ingPanel}>
-      <div style={ip.ingLabel}>食材をタップして除外（次回も自動除外）</div>
-      <div style={ip.ingList}>
+    <div style={{padding:'8px 11px 11px', borderTop:'.5px solid rgba(45,106,79,.2)'}}>
+      <div style={{fontSize:10, color:'var(--text3)', marginBottom:6}}>
+        食材をタップして除外（取消線＝今後も自動除外）
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:4}}>
         {ings.map((ing,i) => {
           const isExc = excluded.includes(ing)
-          const isSt  = staples?.some(s => ing.includes(s)||s.includes(ing))
-          return <button key={i} style={ip.ingBtn(isExc,isSt)} onClick={() => toggle(ing)}>{isExc?'✕ ':isSt?'':'🛒 '}{ing}</button>
+          const isSt  = staples?.some(s=>ing.includes(s)||s.includes(ing))
+          return (
+            <button key={i} onClick={() => toggle(ing)} style={{
+              fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer', transition:'all .12s',
+              background: isExc?'#eee': isSt?'var(--surface2)':'var(--green-l)',
+              color:      isExc?'#bbb': isSt?'var(--text3)':'var(--green)',
+              textDecoration: isExc?'line-through':'none',
+            }}>
+              {isExc?'✕ ': isSt?'':'🛒 '}{ing}
+            </button>
+          )
         })}
       </div>
-      {excluded.length > 0 && <div style={{fontSize:10,color:'var(--text3)',marginTop:5}}>✕ {excluded.join('・')} は次回も自動除外</div>}
+      {excluded.length>0 && <div style={{fontSize:10,color:'var(--text3)',marginTop:5}}>✕ {excluded.join('・')} は今後も自動除外</div>}
     </div>
   )
 }
 
-// 検索ボックス
-function SearchBox({ onSelect, staples }) {
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState([])
-  const [aiLoad,  setAiLoad]  = useState(false)
-  const [focused, setFocused] = useState(false)
-  const [hovId,   setHovId]   = useState(null)
+// ════════════════════════════════════════════
+// 全画面入力ページ
+// ════════════════════════════════════════════
+const SUGGEST_INIT = 20   // 初期表示件数
+const SUGGEST_MORE = 20   // 「もっと見る」で追加する件数
+
+function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, onRemove, onDone }) {
+  const [query,      setQuery]      = useState('')
+  const [aiResults,  setAiResults]  = useState([])
+  const [aiLoading,  setAiLoading]  = useState(false)
+  const [selTmpls,   setSelTmpls]   = useState([])
+  const [expandIdx,  setExpandIdx]  = useState(null)
+  const [showCount,  setShowCount]  = useState(SUGGEST_INIT)
+  const [doneAnim,   setDoneAnim]   = useState(false)
+  const [histList,   setHistList]   = useState(getHistory)
+  const [addingCustom, setAddingCustom] = useState(false)
+  const [customName,   setCustomName]   = useState('')
+  const [customIngs,   setCustomIngs]   = useState('')
   const isComposing = useRef(false)
-  const dropTouched = useRef(false)
   const timer       = useRef(null)
 
-  useEffect(() => {
-    if (!query || query.length < 1) { setResults([]); setAiLoad(false); return }
-    const local = searchRecipes(query)
-    setResults(local)
-    const key = localStorage.getItem('geminiKey')||''
-    if (!key || isComposing.current) return
-    clearTimeout(timer.current)
-    setAiLoad(true)
-    timer.current = setTimeout(async () => {
-      try {
-        const ai = await fetchGeminiSuggestions(query, key)
-        const names = new Set(local.map(r=>r.name))
-        setResults([...local, ...ai.filter(r=>!names.has(r.name)).map(r=>({...r,fromAI:true}))])
-      } catch(e) { console.error(e) } finally { setAiLoad(false) }
-    }, 600)
-    return () => { clearTimeout(timer.current); setAiLoad(false) }
+  const confirmedNames = new Set(confirmed.map(c=>c.name))
+  const customMenus    = getCustomMenus()
+
+  // ── サジェスト一覧（ローカルDB＋カスタム＋AI）──
+  // queryがあればDB絞り込み、なければ全件
+  const localResults = useMemo(() => {
+    const db  = searchRecipes(query || '')
+    // queryなしは全DB（先頭20件）
+    const base = query ? db : searchRecipes('') // 空検索は全DBから
+    const cm   = customMenus.filter(m => !query || m.name.includes(query))
+    // カスタムメニューを先頭に、DBを後ろに
+    const merged = [...cm, ...base.filter(r => !cm.find(c=>c.name===r.name))]
+    return merged
   }, [query])
 
-  const pick = (r) => { onSelect(r); setQuery(''); setResults([]); setFocused(false) }
-  const showDrop = focused && (results.length > 0 || aiLoad)
+  // AI検索（queryあり時のみ）
+  useEffect(() => {
+    if (!query || query.length < 1) { setAiResults([]); setAiLoading(false); return }
+    if (isComposing.current) return
+    clearTimeout(timer.current)
+    setAiLoading(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const key = localStorage.getItem('geminiKey')||''
+        if (!key) { setAiLoading(false); return }
+        const ai = await fetchGeminiSuggestions(query, key)
+        const localNames = new Set(localResults.map(r=>r.name))
+        setAiResults(ai.filter(r=>!localNames.has(r.name)).map(r=>({...r,fromAI:true})))
+      } catch(e) { console.error(e) } finally { setAiLoading(false) }
+    }, 600)
+    return () => { clearTimeout(timer.current); setAiLoading(false) }
+  }, [query])
 
-  return (
-    <div style={ip.searchWrap}>
-      <input
-        style={{...ip.searchInp, borderColor: focused?'var(--green)':'var(--border2)'}}
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        onCompositionStart={() => { isComposing.current=true }}
-        onCompositionEnd={e => {
-          isComposing.current=false
-          setQuery(e.target.value+' ')
-          setTimeout(()=>setQuery(e.target.value),0)
-        }}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => {
-          if (!dropTouched.current) { setFocused(false); setAiLoad(false) }
-          dropTouched.current=false
-        }, 300)}
-        placeholder="料理名で検索（例：焼きそば）"
-      />
-      {showDrop && (
-        <div style={ip.dropdown}
-          onTouchStart={() => { dropTouched.current=true }}
-          onMouseDown={() => { dropTouched.current=true }}
-        >
-          {aiLoad && (
-            <div style={ip.loadRow}>
-              {[0,1,2].map(i=><span key={i} style={{...ip.dot, animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
-              <span style={{marginLeft:4}}>Geminiで検索中...</span>
-            </div>
-          )}
-          {results.map((r,i)=>(
-            <div key={i}
-              style={{...ip.dropItem(hovId===i), borderBottom:i===results.length-1?'none':undefined}}
-              onMouseEnter={()=>setHovId(i)} onMouseLeave={()=>setHovId(null)}
-              onMouseDown={()=>pick(r)} onTouchEnd={e=>{e.preventDefault();pick(r)}}
-            >
-              <div style={ip.dropName}>{r.name}{r.fromAI&&<span style={ip.aiLabel}>✨ AI</span>}</div>
-              {r.ings?.length>0 && <div style={ip.dropIngs}>{r.ings.slice(0,5).join('・')}</div>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+  // 全候補（ローカル＋AI）、確定済みを除外
+  const allResults = useMemo(() => {
+    return [...localResults, ...aiResults].filter(r => !confirmedNames.has(r.name))
+  }, [localResults, aiResults, confirmed])
 
-// 全画面入力ページ
-function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, onRemove, onDone }) {
-  const [selTmpls,  setSelTmpls]  = useState([])
-  const [expandIdx, setExpandIdx] = useState(null)
-  const [hovHist,   setHovHist]   = useState(null)
-  const [doneAnim,  setDoneAnim]  = useState(false)
-  const history = getHistory().slice(0,15)
-  const confirmedNames = new Set(confirmed.map(c=>c.name))
-  const filteredHist   = history.filter(h=>!confirmedNames.has(h.name))
+  const visibleResults = allResults.slice(0, showCount)
+  const hasMore        = allResults.length > showCount
 
-  const toggleTmpl = (t) => setSelTmpls(prev => prev.find(x=>x.id===t.id) ? prev.filter(x=>x.id!==t.id) : [...prev,t])
+  const pick = (r) => {
+    onAdd({name:r.name, ings:r.ings||[]})
+    addHistory({name:r.name, ings:r.ings||[]})
+    setHistList(getHistory())
+    setQuery('')
+    setAiResults([])
+    setShowCount(SUGGEST_INIT)
+  }
+
+  // テンプレ
+  const toggleTmpl = (t) => setSelTmpls(prev=>prev.find(x=>x.id===t.id)?prev.filter(x=>x.id!==t.id):[...prev,t])
   const confirmTmpls = () => {
     selTmpls.forEach(t => { onAdd({name:t.name,ings:t.ings||[]}); addHistory({name:t.name,ings:t.ings||[]}) })
-    setSelTmpls([])
+    setSelTmpls([]); setHistList(getHistory())
   }
-  const handleSearch = (r) => { onAdd({name:r.name,ings:r.ings||[]}); addHistory({name:r.name,ings:r.ings||[]}) }
-  const handleHist   = (m) => { onAdd({name:m.name,ings:m.ings||[]}); addHistory(m) }
+
+  // カスタムメニュー追加
+  const saveCustom = () => {
+    const name = customName.trim()
+    if (!name) return
+    const ings = customIngs.split(/[,、，]+/).map(s=>s.trim()).filter(Boolean)
+    const meal = {name, ings}
+    addCustomMenu(meal)
+    addHistory(meal)
+    onAdd(meal)
+    setCustomName(''); setCustomIngs(''); setAddingCustom(false)
+    setHistList(getHistory())
+  }
+
+  // 履歴削除
+  const deleteHist = (name, e) => {
+    e.stopPropagation()
+    removeHistory(name)
+    setHistList(getHistory())
+  }
+
+  const filteredHist = histList.filter(h => !confirmedNames.has(h.name) && (!query || h.name.includes(query)))
 
   const handleDone = () => {
-    if (confirmed.length > 0) {
-      setDoneAnim(true)
-      setTimeout(onDone, 700)
-    } else {
-      onDone()
-    }
+    if (confirmed.length > 0) { setDoneAnim(true); setTimeout(onDone, 700) }
+    else onDone()
   }
 
   return (
-    <div style={ip.page}>
+    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease'}}>
+
       {/* ヘッダー */}
-      <div style={ip.header}>
-        <button style={ip.backBtn} onClick={onDone}>←</button>
-        <div style={ip.headerInfo}>
-          <div style={ip.headerTitle}>{dayLabel} {mealLabel}</div>
-          <div style={ip.headerSub}>{confirmed.length>0 ? `${confirmed.map(m=>m.name).join('・')}` : '料理を選んでください'}</div>
+      <div style={{padding:'14px 16px 12px',background:'var(--surface)',borderBottom:'.5px solid var(--border)',flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onDone} style={{width:34,height:34,borderRadius:'50%',border:'none',background:'var(--surface2)',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text2)',flexShrink:0}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:600}}>{dayLabel} {mealLabel}</div>
+          <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
+            {confirmed.length>0 ? confirmed.map(m=>m.name).join('・') : '料理を選んでください'}
+          </div>
         </div>
       </div>
 
-      <div style={ip.body}>
+      {/* 本体 */}
+      <div style={{flex:1,overflowY:'auto',padding:'14px',paddingBottom:90}}>
 
         {/* 追加済み */}
         {confirmed.length > 0 && (
-          <>
-            <div style={{...ip.sec,...ip.secFirst}}>追加済み</div>
-            <div style={ip.addedList}>
-              {confirmed.map((m,i)=>(
-                <div key={i} style={ip.addedChip}>
-                  <div style={ip.addedHead}>
-                    <span style={ip.addedName} onClick={()=>setExpandIdx(expandIdx===i?null:i)}>
-                      🍽 {m.name}
-                      {m.ings?.length>0 && <span style={ip.addedBadge}>{expandIdx===i?'▲':'▼'} 食材</span>}
-                    </span>
-                    <span style={ip.addedDel} onClick={()=>{onRemove(i);if(expandIdx===i)setExpandIdx(null)}}>×</span>
-                  </div>
-                  {expandIdx===i && <IngPanel mealName={m.name} ings={m.ings} staples={staples} />}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>追加済み</div>
+            {confirmed.map((m,i)=>(
+              <div key={i} style={{background:'var(--green-l)',borderRadius:'var(--rs)',overflow:'hidden',marginBottom:5}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,padding:'9px 11px',cursor:'pointer'}} onClick={()=>setExpandIdx(expandIdx===i?null:i)}>
+                  <span style={{flex:1,fontSize:14,fontWeight:500,color:'var(--green)'}}>
+                    🍽 {m.name}
+                    {m.ings?.length>0 && <span style={{fontSize:9,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:4,padding:'1px 5px',marginLeft:4}}>{expandIdx===i?'▲':'▼'} 食材</span>}
+                  </span>
+                  <span onClick={e=>{e.stopPropagation();onRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 2px',cursor:'pointer',lineHeight:1}}>×</span>
                 </div>
-              ))}
-            </div>
-          </>
+                {expandIdx===i && <IngPanel mealName={m.name} ings={m.ings} staples={staples} />}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* テンプレート */}
-        <div style={{...ip.sec, ...(confirmed.length===0?ip.secFirst:{})}}>テンプレート</div>
-        <div style={ip.tmplGrid}>
-          {templates.map(t=>(
-            <button key={t.id} style={ip.tmplBtn(!!selTmpls.find(x=>x.id===t.id))} onClick={()=>toggleTmpl(t)}>
-              {selTmpls.find(x=>x.id===t.id)?'✓ ':''}{t.name}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>テンプレート</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+            {templates.map(t=>(
+              <button key={t.id} onClick={()=>toggleTmpl(t)} style={{
+                padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:selTmpls.find(x=>x.id===t.id)?500:400,transition:'all .12s',
+                background:selTmpls.find(x=>x.id===t.id)?'var(--green)':'var(--surface2)',
+                color:selTmpls.find(x=>x.id===t.id)?'#fff':'var(--text2)',
+              }}>{selTmpls.find(x=>x.id===t.id)?'✓ ':''}{t.name}</button>
+            ))}
+          </div>
+          {selTmpls.length>0 && (
+            <button onClick={confirmTmpls} style={{width:'100%',marginTop:8,padding:'9px',background:'var(--green)',color:'#fff',border:'none',borderRadius:'var(--rs)',fontSize:13,fontWeight:500,cursor:'pointer'}}>
+              {selTmpls.map(t=>t.name).join('・')} を追加
             </button>
-          ))}
+          )}
         </div>
-        {selTmpls.length>0 && (
-          <button style={ip.addSelBtn} onClick={confirmTmpls}>
-            {selTmpls.map(t=>t.name).join('・')} を追加
-          </button>
-        )}
 
         {/* 検索 */}
-        <div style={ip.sec}>料理を検索</div>
-        <SearchBox onSelect={handleSearch} staples={staples} />
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>料理を選ぶ</div>
+          <input
+            value={query}
+            onChange={e=>{setQuery(e.target.value);setShowCount(SUGGEST_INIT)}}
+            onCompositionStart={()=>{isComposing.current=true}}
+            onCompositionEnd={e=>{isComposing.current=false;setQuery(e.target.value+' ');setTimeout(()=>setQuery(e.target.value),0)}}
+            placeholder="絞り込み検索（空欄で全件表示）"
+            style={{width:'100%',padding:'10px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:14,outline:'none',background:'var(--surface)',color:'var(--text)',marginBottom:8}}
+          />
 
-        {/* 履歴 */}
-        {filteredHist.length>0 && (
-          <>
-            <div style={ip.sec}>履歴</div>
-            {filteredHist.map((m,i)=>(
-              <div key={i} style={ip.histItem(hovHist===i)}
-                onMouseEnter={()=>setHovHist(i)} onMouseLeave={()=>setHovHist(null)}
-                onClick={()=>handleHist(m)}
+          {/* AIローディング */}
+          {aiLoading && (
+            <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 2px',fontSize:12,color:'var(--text3)',marginBottom:6}}>
+              {[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
+              <span style={{marginLeft:4}}>Geminiで検索中...</span>
+            </div>
+          )}
+
+          {/* 候補一覧（固定表示） */}
+          <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
+            {visibleResults.length===0 && !aiLoading && (
+              <div style={{padding:'12px 13px',fontSize:13,color:'var(--text3)'}}>候補が見つかりません</div>
+            )}
+            {visibleResults.map((r,i)=>(
+              <div key={i} onClick={()=>pick(r)} style={{
+                padding:'11px 13px',cursor:'pointer',
+                borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
+                background:'var(--surface)',
+                transition:'background .1s',
+              }}
+              onTouchStart={e=>e.currentTarget.style.background='var(--green-l)'}
+              onTouchEnd={e=>e.currentTarget.style.background='var(--surface)'}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--green-l)'}
+              onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}
               >
-                <span style={ip.histName}>{m.name}</span>
-                <span style={ip.histAdd}>＋</span>
+                <div style={{fontSize:14,fontWeight:500}}>
+                  {r.name}
+                  {r.fromAI && <span style={{fontSize:9,background:'var(--green-l)',color:'var(--green)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>✨ AI</span>}
+                  {r.isCustom && <span style={{fontSize:9,background:'var(--purple-l)',color:'var(--purple)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>マイメニュー</span>}
+                </div>
+                {r.ings?.length>0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{r.ings.slice(0,5).join('・')}</div>}
               </div>
             ))}
-          </>
+            {hasMore && (
+              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
+                もっと見る（残り{allResults.length-showCount}件）
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* カスタムメニュー追加 */}
+        <div style={{marginBottom:16}}>
+          {!addingCustom ? (
+            <button onClick={()=>setAddingCustom(true)} style={{width:'100%',padding:'9px',background:'none',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',fontSize:13,color:'var(--text3)',cursor:'pointer'}}>
+              ＋ リストにないメニューを追加
+            </button>
+          ) : (
+            <div style={{background:'var(--surface2)',borderRadius:'var(--rs)',padding:12}}>
+              <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontWeight:500}}>新しいメニューを登録（次回から候補に出ます）</div>
+              <input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="料理名 *" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:6}}/>
+              <input value={customIngs} onChange={e=>setCustomIngs(e.target.value)} placeholder="食材（カンマ区切り）" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:8}}/>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>{setAddingCustom(false);setCustomName('');setCustomIngs('')}} style={{flex:1,padding:'8px',background:'var(--surface)',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'var(--text2)'}}>キャンセル</button>
+                <button onClick={saveCustom} style={{flex:1,padding:'8px',background:'var(--green)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'#fff',fontWeight:500}}>登録して追加</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 履歴 */}
+        {filteredHist.length > 0 && (
+          <div>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>履歴</div>
+            {filteredHist.map((m,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',padding:'10px 6px',borderBottom:'.5px solid var(--border)',cursor:'pointer'}}
+                onClick={()=>{onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
+                onTouchStart={e=>e.currentTarget.style.background='var(--surface2)'}
+                onTouchEnd={e=>e.currentTarget.style.background=''}
+              >
+                <span style={{flex:1,fontSize:13}}>{m.name}</span>
+                <button
+                  onClick={e=>deleteHist(m.name,e)}
+                  style={{fontSize:11,color:'var(--text3)',padding:'3px 7px',borderRadius:'var(--rs)',border:'.5px solid var(--border)',background:'none',cursor:'pointer',marginRight:6}}
+                >削除</button>
+                <span style={{fontSize:18,color:'var(--green)',fontWeight:300,padding:'0 4px'}}>＋</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
       {/* フッター */}
-      <div style={ip.footer}>
-        <button style={ip.doneBtn(doneAnim)} onClick={handleDone}>
+      <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'10px 14px',paddingBottom:'calc(10px + env(safe-area-inset-bottom))',background:'var(--surface)',borderTop:'.5px solid var(--border)'}}>
+        <button onClick={handleDone} style={{
+          width:'100%',padding:'13px',border:'none',borderRadius:'var(--rs)',fontSize:14,fontWeight:600,cursor:'pointer',transition:'background .2s',
+          background:doneAnim?'#52B788':'var(--green)',color:'#fff',
+        }}>
           {doneAnim
             ? `✓ ${confirmed.map(m=>m.name).join('・')} を登録しました`
             : confirmed.length>0 ? `${confirmed.map(m=>m.name).join('・')} で確定` : '閉じる'
@@ -382,41 +383,12 @@ function InputPage({ dayLabel, mealLabel, confirmed, templates, staples, onAdd, 
 // ════════════════════════════════════════════
 // 一覧ページ
 // ════════════════════════════════════════════
-const lp = {
-  page:    { paddingBottom:80 },
-  dayList: { display:'flex', flexDirection:'column' },
-  dayRow:  (past) => ({ display:'flex', alignItems:'stretch', borderBottom:'.5px solid var(--border)', opacity:past?.6:1 }),
-  dayLabel:(today) => ({
-    width:52, flexShrink:0, padding:'12px 6px',
-    display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start',
-    gap:2, background: today?'var(--green)':'var(--surface2)',
-    borderRight:'.5px solid var(--border)',
-  }),
-  dow:  (today) => ({ fontSize:11, fontWeight:600, color:today?'#fff':'var(--text3)' }),
-  date: (today) => ({ fontSize:13, fontWeight:today?700:400, color:today?'#fff':'var(--text)' }),
-  dayContent: { flex:1, padding:'10px 12px', display:'flex', flexDirection:'column', gap:6 },
-  slotRow:    { display:'flex', alignItems:'flex-start', gap:7 },
-  lbl:        { fontSize:10, color:'var(--text3)', width:22, flexShrink:0, paddingTop:9, fontWeight:600 },
-  inner:      { flex:1, minWidth:0 },
-  chipArea:   { display:'flex', flexDirection:'column', gap:3, marginBottom:3 },
-  chip:       { display:'flex', alignItems:'center', gap:5, padding:'6px 10px', background:'var(--green-l)', borderRadius:'var(--rs)', cursor:'pointer' },
-  chipName:   { flex:1, fontSize:13, fontWeight:500, color:'var(--green)' },
-  chipDel:    { fontSize:15, color:'var(--text3)', lineHeight:1, padding:'0 2px', cursor:'pointer' },
-  addBtn:     (has) => ({
-    padding: has?'4px 10px':'7px 10px', fontSize:12, color:'var(--text3)',
-    border:'.5px dashed var(--border2)', borderRadius:'var(--rs)',
-    cursor:'pointer', background:'none', width:'100%', textAlign:'left',
-  }),
-}
-
 export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const dates     = getDisplayDates()
   const meals     = data?.meals     || {}
   const templates = data?.templates || DEFAULT_TEMPLATES
   const rowRefs   = useRef([])
-
-  // 入力ページの状態
-  const [inputTarget, setInputTarget] = useState(null) // { key, dayLabel, mealLabel }
+  const [inputTarget, setInputTarget] = useState(null)
 
   useEffect(() => {
     const el = rowRefs.current[TODAY_IDX]
@@ -431,7 +403,6 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
     if (addIngs.length>0) onAddToList(addIngs, meal.name)
     onUpdate({ meals:{...meals,[key]:[...getList(key),meal]} })
   }
-
   const removeMeal = (key, idx) => {
     const list = getList(key).filter((_,i)=>i!==idx)
     const next = {...meals}
@@ -439,47 +410,46 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
     onUpdate({meals:next})
   }
 
-  // 入力ページを開く
-  const openInput = (key, dayLabel, mealLabel) => setInputTarget({key,dayLabel,mealLabel})
-  const closeInput = () => setInputTarget(null)
-
   return (
     <>
-      {/* 一覧 */}
-      <div style={lp.page}>
-        <div style={lp.dayList}>
+      <div style={{paddingBottom:80}}>
+        <div style={{display:'flex',flexDirection:'column'}}>
           {dates.map((date,di) => {
             const today   = isToday(date)
             const past    = di < TODAY_IDX
             const dateStr = `${date.getMonth()+1}/${date.getDate()}`
-            const dow     = DAY_SHORT[date.getDay()]
             const dayFull = DAY_FULL[date.getDay()]
 
             return (
-              <div key={di} style={lp.dayRow(past)} ref={el=>rowRefs.current[di]=el}>
-                <div style={lp.dayLabel(today)}>
-                  <span style={lp.dow(today)}>{dow}</span>
-                  <span style={lp.date(today)}>{dateStr}</span>
+              <div key={di} style={{display:'flex',alignItems:'stretch',borderBottom:'.5px solid var(--border)',opacity:past?.6:1}} ref={el=>rowRefs.current[di]=el}>
+                {/* 日付ラベル */}
+                <div style={{width:52,flexShrink:0,padding:'12px 6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',gap:2,background:today?'var(--green)':'var(--surface2)',borderRight:'.5px solid var(--border)'}}>
+                  <span style={{fontSize:11,fontWeight:600,color:today?'#fff':'var(--text3)'}}>{DAY_SHORT[date.getDay()]}</span>
+                  <span style={{fontSize:13,fontWeight:today?700:400,color:today?'#fff':'var(--text)'}}>{dateStr}</span>
                 </div>
-                <div style={lp.dayContent}>
+
+                {/* 朝昼夜 */}
+                <div style={{flex:1,padding:'10px 12px',display:'flex',flexDirection:'column',gap:6}}>
                   {MEALS.map(meal => {
                     const key  = slotKey(date, meal)
                     const list = getList(key)
                     return (
-                      <div key={meal} style={lp.slotRow}>
-                        <div style={lp.lbl}>{meal}</div>
-                        <div style={lp.inner}>
+                      <div key={meal} style={{display:'flex',alignItems:'flex-start',gap:7}}>
+                        <div style={{fontSize:10,color:'var(--text3)',width:22,flexShrink:0,paddingTop:9,fontWeight:600}}>{meal}</div>
+                        <div style={{flex:1,minWidth:0}}>
                           {list.length>0 && (
-                            <div style={lp.chipArea}>
+                            <div style={{display:'flex',flexDirection:'column',gap:3,marginBottom:3}}>
                               {list.map((m,i)=>(
-                                <div key={i} style={lp.chip} onClick={()=>openInput(key,dayFull,meal)}>
-                                  <span style={lp.chipName}>🍽 {m.name}</span>
-                                  <span style={lp.chipDel} onClick={e=>{e.stopPropagation();removeMeal(key,i)}}>×</span>
+                                <div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',background:'var(--green-l)',borderRadius:'var(--rs)',cursor:'pointer'}}
+                                  onClick={()=>setInputTarget({key,dayLabel:dayFull,mealLabel:meal})}>
+                                  <span style={{flex:1,fontSize:13,fontWeight:500,color:'var(--green)'}}>🍽 {m.name}</span>
+                                  <span onClick={e=>{e.stopPropagation();removeMeal(key,i)}} style={{fontSize:15,color:'var(--text3)',lineHeight:1,padding:'0 2px',cursor:'pointer'}}>×</span>
                                 </div>
                               ))}
                             </div>
                           )}
-                          <button style={lp.addBtn(list.length>0)} onClick={()=>openInput(key,dayFull,meal)}>
+                          <button onClick={()=>setInputTarget({key,dayLabel:dayFull,mealLabel:meal})}
+                            style={{padding:list.length>0?'4px 10px':'7px 10px',fontSize:12,color:'var(--text3)',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',cursor:'pointer',background:'none',width:'100%',textAlign:'left'}}>
                             ＋ {list.length>0?'もう一品':'料理を追加'}
                           </button>
                         </div>
@@ -493,7 +463,6 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
         </div>
       </div>
 
-      {/* 全画面入力ページ */}
       {inputTarget && (
         <InputPage
           dayLabel={inputTarget.dayLabel}
@@ -501,9 +470,9 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
           confirmed={getList(inputTarget.key)}
           templates={templates}
           staples={staples}
-          onAdd={(meal)=>addMeal(inputTarget.key, meal)}
-          onRemove={(idx)=>removeMeal(inputTarget.key, idx)}
-          onDone={closeInput}
+          onAdd={meal=>addMeal(inputTarget.key,meal)}
+          onRemove={idx=>removeMeal(inputTarget.key,idx)}
+          onDone={()=>setInputTarget(null)}
         />
       )}
     </>
