@@ -85,7 +85,12 @@ export default function App() {
 
   // 常備品チェック
   const staples = data?.staples || DEFAULT_STAPLES
-  const isStaple = (name) => staples.some(s => name.includes(s) || s.includes(name))
+  const isStaple = (name) => staples.some(s => {
+    // 完全一致、または食材名が常備品を完全に含む場合のみ除外
+    // 「コンソメスープ」に「コンソメ」が含まれる→除外
+    // 「野菜」→常備品にないので除外しない
+    return name === s || name.includes(s) && s.length >= 2
+  })
 
   // 献立から食材をリストに追加（常備品は除外）
   const addToList = useCallback((ings, mealName) => {
