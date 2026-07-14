@@ -123,6 +123,7 @@ function MySetsSection({ mySets, onAddSet, confirmedNames }) {
           return (
             <div key={i}
               onClick={() => !alreadyAdded && onAddSet(set.meals)}
+              onTouchEnd={e => { e.preventDefault(); if (!alreadyAdded) onAddSet(set.meals) }}
               onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
               style={{
                 padding:'10px 13px', borderRadius:'var(--rs)', cursor: alreadyAdded?'default':'pointer',
@@ -448,7 +449,10 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
               </div>
             )}
             {visibleResults.map((r,i)=>(
-              <div key={i} onClick={()=>pick(r)} style={{
+              <div key={i}
+              onClick={()=>pick(r)}
+              onTouchEnd={e=>{e.preventDefault();pick(r)}}
+              style={{
                 padding:'11px 13px',cursor:'pointer',
                 borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
                 background:'var(--surface)',
@@ -466,7 +470,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
               </div>
             ))}
             {hasMore && (
-              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
+              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} onTouchEnd={e=>{e.preventDefault();setShowCount(c=>c+SUGGEST_MORE)}} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
                 もっと見る（残り{allResults.length-showCount}件）
               </div>
             )}
@@ -499,6 +503,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
             {filteredHist.map((m,i)=>(
               <div key={i} style={{display:'flex',alignItems:'center',padding:'10px 6px',borderBottom:'.5px solid var(--border)',cursor:'pointer'}}
                 onClick={()=>{onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
+                onTouchEnd={e=>{e.preventDefault();onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
                 onTouchStart={e=>e.currentTarget.style.background='var(--surface2)'}
                 onTouchEnd={e=>e.currentTarget.style.background=''}
               >
