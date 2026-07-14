@@ -103,11 +103,12 @@ export const RECIPE_DB = [
 
 // キーワードで絞り込む（前方一致・部分一致）
 export function searchRecipes(keyword) {
-  if (!keyword || keyword.length < 1) return []
+  // 空文字・未指定の場合は全件返す（入力ページの初期一覧用）
+  if (!keyword || keyword.length < 1) return RECIPE_DB
   const kw = keyword.toLowerCase()
   return RECIPE_DB.filter(r =>
     r.name.toLowerCase().includes(kw)
-  ).slice(0, 8)
+  )
 }
 
 // ============================================================
