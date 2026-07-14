@@ -5,16 +5,48 @@ const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','
 const DAY_SHORT = ['日','月','火','水','木','金','土']
 const MEALS     = ['朝','昼','夜']
 
-export const DEFAULT_TEMPLATES = [
-  { id:1, name:'ヨーグルト', ings:[] },
-  { id:2, name:'豆腐',       ings:['豆腐'] },
-  { id:3, name:'トースト',   ings:['食パン','バター'] },
-  { id:4, name:'目玉焼き',   ings:['卵'] },
-  { id:5, name:'おにぎり',   ings:[] },
-  { id:6, name:'サラダ',     ings:['レタス','トマト','きゅうり'] },
-  { id:7, name:'味噌汁',     ings:['豆腐','わかめ','長ねぎ'] },
-  { id:8, name:'納豆',       ings:['納豆'] },
-]
+export const DEFAULT_TEMPLATES = {
+  朝: [
+    { id:'a1', name:'ヨーグルト',   ings:[] },
+    { id:'a2', name:'冷奴',         ings:['豆腐'] },
+    { id:'a3', name:'バナナ',       ings:['バナナ'] },
+    { id:'a4', name:'トースト',     ings:['食パン','バター'] },
+    { id:'a5', name:'目玉焼き',     ings:['卵'] },
+    { id:'a6', name:'おにぎり',     ings:[] },
+    { id:'a7', name:'納豆',         ings:['納豆'] },
+    { id:'a8', name:'フルーツ',     ings:[] },
+  ],
+  昼: [
+    { id:'l1', name:'サンドイッチ', ings:['食パン','ハム','レタス','トマト'] },
+    { id:'l2', name:'サラダ',       ings:['レタス','トマト','きゅうり'] },
+    { id:'l3', name:'おにぎり',     ings:[] },
+    { id:'l4', name:'パスタ',       ings:['パスタ'] },
+    { id:'l5', name:'そうめん',     ings:['そうめん','長ねぎ','生姜','醤油','みりん'] },
+    { id:'l6', name:'うどん',       ings:['うどん','だし','醤油','みりん'] },
+    { id:'l7', name:'チャーハン',   ings:['ごはん','卵','長ねぎ','醤油','ごま油'] },
+    { id:'l8', name:'カレー（残り）',ings:[] },
+  ],
+  夜: [
+    { id:'e1', name:'味噌汁',       ings:['豆腐','わかめ','長ねぎ'] },
+    { id:'e2', name:'サラダ',       ings:['レタス','トマト','きゅうり'] },
+    { id:'e3', name:'パン',         ings:['食パン','バター'] },
+    { id:'e4', name:'カプレーゼ',   ings:['トマト','モッツァレラチーズ','バジル','オリーブ油'] },
+    { id:'e5', name:'ビーフシチュー',ings:['牛すね肉','玉ねぎ','にんじん','じゃがいも','デミグラスソース缶'] },
+    { id:'e6', name:'ごはん',       ings:[] },
+    { id:'e7', name:'漬物',         ings:[] },
+    { id:'e8', name:'冷奴',         ings:['豆腐'] },
+  ],
+}
+
+// mealLabel（朝/昼/夜）に対応したテンプレート配列を返す
+export function getTemplatesForMeal(templates, mealLabel) {
+  if (templates && !Array.isArray(templates)) {
+    // 時間帯別オブジェクト形式
+    return templates[mealLabel] || templates['朝'] || []
+  }
+  // 旧形式（配列）の場合はそのまま返す（後方互換）
+  return templates || []
+}
 
 // ── 日付 ──
 function getDisplayDates() {
@@ -427,6 +459,8 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const meals     = data?.meals     || {}
   const templates = data?.templates || DEFAULT_TEMPLATES
   const rowRefs   = useRef([])
+  // 時間帯別テンプレ取得ヘルパー（InputPageに渡す）
+  const getTemplates = (mealLabel) => getTemplatesForMeal(templates, mealLabel)
   const [inputTarget, setInputTarget] = useState(null)
 
   useEffect(() => {
@@ -507,7 +541,7 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
           dayLabel={inputTarget.dayLabel}
           mealLabel={inputTarget.mealLabel}
           confirmed={getList(inputTarget.key)}
-          templates={templates}
+          templates={getTemplates(inputTarget.mealLabel)}
           staples={staples}
           onAdd={meal=>addMeal(inputTarget.key,meal)}
           onRemove={idx=>removeMeal(inputTarget.key,idx)}
