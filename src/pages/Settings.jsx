@@ -7,8 +7,10 @@ import { DEFAULT_STAPLES } from '../App'
 // ════════════════════════════════
 // マイセット管理
 // ════════════════════════════════
-function MySetManager() {
-  const [sets,      setSets]      = useState(() => { try { return JSON.parse(localStorage.getItem('mySets')||'[]') } catch { return [] } })
+function MySetManager({ data, onUpdate }) {
+  // Firebase保存 + localStorageフォールバック
+  const [sets, setSetsLocal] = useState(() => { try { return JSON.parse(localStorage.getItem('mySets')||'[]') } catch { return [] } })
+  const fireSets = data?.mySets
   const [creating,  setCreating]  = useState(false)
   const [editIdx,   setEditIdx]   = useState(null)
   const [setName,   setSetName]   = useState('')
@@ -16,16 +18,18 @@ function MySetManager() {
   const [mealList,  setMealList]  = useState([])  // [{name, ings:[]}]
   const [expandIdx, setExpandIdx] = useState(null)
 
+  const activeSets = (fireSets && fireSets.length > 0) ? fireSets : sets
   const saveSets = (next) => {
     localStorage.setItem('mySets', JSON.stringify(next))
-    setSets(next)
+    setSetsLocal(next)
+    onUpdate?.({ mySets: next })  // Firebaseにも保存
   }
 
   const openCreate = () => {
     setSetName(''); setMealList([]); setMealInput(''); setCreating(true); setEditIdx(null)
   }
   const openEdit = (i) => {
-    setSetName(sets[i].name); setMealList([...sets[i].meals]); setMealInput(''); setEditIdx(i); setCreating(true)
+    setSetName(activeSets[i].name); setMealList([...activeSets[i].meals]); setMealInput(''); setEditIdx(i); setCreating(true)
   }
 
   const addMeal = () => {
@@ -39,22 +43,22 @@ function MySetManager() {
     if (!setName.trim() || mealList.length === 0) return
     const entry = { name: setName.trim(), meals: mealList }
     const next = editIdx !== null
-      ? sets.map((s,i) => i===editIdx ? entry : s)
-      : [...sets, entry]
+      ? activeSets.map((s,i) => i===editIdx ? entry : s)
+      : [...activeSets, entry]
     saveSets(next)
     setCreating(false); setEditIdx(null)
   }
-  const deleteSet = (i) => saveSets(sets.filter((_,j)=>j!==i))
+  const deleteSet = (i) => saveSets(activeSets.filter((_,j)=>j!==i))
 
   return (
     <div>
-      {sets.length === 0 && !creating && (
+      {activeSets.length === 0 && !creating && (
         <div style={{fontSize:12, color:'var(--text3)', marginBottom:10}}>
           まだセットがありません。よく食べる料理の組み合わせを登録しておくと、献立入力時に一括追加できます。
         </div>
       )}
 
-      {sets.map((set, i) => (
+      {activeSets.map((set, i) => (
         <div key={i} style={{marginBottom:8, border:'.5px solid var(--border)', borderRadius:'var(--rs)', overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', padding:'9px 12px', background:'var(--surface2)', cursor:'pointer'}}
             onClick={() => setExpandIdx(expandIdx===i?null:i)}>
@@ -201,17 +205,16 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   const [geminiSaved, setGeminiSaved] = useState(!!localStorage.getItem('geminiKey'))
   const [joining,     setJoining]     = useState(false)
   const [msg,         setMsg]         = useState('')
-  const [showAddTmpl, setShowAddTmpl] = useState(false)
-  const [newTmplName, setNewTmplName] = useState('')
-  const [newTmplIngs, setNewTmplIngs] = useState('')
-  const [newTmplSkip, setNewTmplSkip] = useState(false)
   const [newStaple,   setNewStaple]   = useState('')
 
-  const templates = data?.templates || DEFAULT_TEMPLATES
+  const rawTmpl = data?.templates
+  const templates = (rawTmpl && !(Array.isArray(rawTmpl) && rawTmpl.length === 0))
+    ? rawTmpl
+    : DEFAULT_TEMPLATES
   const staples   = data?.staples   || DEFAULT_STAPLES
   const [activeMeal, setActiveMeal] = useState('朝')
 
-  // 時間帯別テンプレ取得
+  // 時間帯別テンプレ取得（フォールバック込み）
   const mealTemplates = getTemplatesForMeal(templates, activeMeal)
 
   // テンプレ操作（時間帯別オブジェクト対応）
@@ -251,52 +254,14 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   return (
     <div style={s.page}>
 
-      {/* ── マイセット ── */}
+      {/* ── Myセット ── */}
       <div style={{ ...s.sec, marginTop: 0 }}>Myセット</div>
       <div style={s.card}>
-        <label style={s.label}>よく食べる料理の組み合わせをセットとして登録。献立入力時にワンタップで全品まとめて追加できます。</label>
-        <MySetManager />
+        <label style={s.label}>よく食べる料理の組み合わせをセットで登録。「洋食」「和食」などの名前でまとめておくと、献立入力時にワンタップで全品追加できます。</label>
+        <MySetManager onUpdate={onUpdate} data={data} />
       </div>
 
-      {/* ── テンプレート ── */}
-      <div style={s.sec}>テンプレート</div>
-      <div style={s.card}>
-        <label style={s.label}>朝・昼・夜それぞれの入力時に表示されるワンタップ選択肢です。</label>
 
-        {/* 時間帯タブ */}
-        <div style={{display:'flex', gap:4, marginBottom:12}}>
-          {['朝','昼','夜'].map(meal => (
-            <button key={meal} onClick={() => setActiveMeal(meal)} style={{
-              flex:1, padding:'6px 0', border:'none', borderRadius:'var(--rs)', cursor:'pointer', fontSize:13, fontWeight:activeMeal===meal?600:400,
-              background: activeMeal===meal ? 'var(--green)' : 'var(--surface2)',
-              color: activeMeal===meal ? '#fff' : 'var(--text2)',
-              transition:'all .15s',
-            }}>{meal}</button>
-          ))}
-        </div>
-
-        {mealTemplates.map(t => (
-          <div key={t.id} style={s.listItem}>
-            <span style={s.itemName}>{t.name}</span>
-            <button style={s.delBtn} onClick={() => removeTmpl(t.id)}>×</button>
-          </div>
-        ))}
-        {showAddTmpl ? (
-          <div style={{ marginTop: 10, background: 'var(--surface2)', borderRadius: 'var(--rs)', padding: 12 }}>
-            <input style={{ ...s.inp, marginBottom: 6 }} value={newTmplName} onChange={e => setNewTmplName(e.target.value)} placeholder="料理名（例：バナナ）" />
-            <input style={{ ...s.inp, marginBottom: 6 }} value={newTmplIngs} onChange={e => setNewTmplIngs(e.target.value)} placeholder="食材（省略可）例：食パン, バター" />
-            <button style={{ width: '100%', padding: '7px', border: 'none', borderRadius: 'var(--rs)', marginBottom: 8, cursor: 'pointer', fontSize: 12, background: newTmplSkip ? 'var(--surface2)' : 'var(--green-l)', color: newTmplSkip ? 'var(--text3)' : 'var(--green)' }} onClick={() => setNewTmplSkip(v => !v)}>
-              {newTmplSkip ? '⬜ リストに追加しない（常備品・作り置き）' : '✅ リストに追加する'}
-            </button>
-            <div style={s.row}>
-              <button style={s.btn('white')} onClick={() => { setShowAddTmpl(false); setNewTmplName('') }}>キャンセル</button>
-              <button style={s.btn('green')} onClick={addTemplate}>追加</button>
-            </div>
-          </div>
-        ) : (
-          <button style={{ ...s.btn('white'), marginTop: 10, width: '100%' }} onClick={() => setShowAddTmpl(true)}>＋ テンプレートを追加</button>
-        )}
-      </div>
 
       {/* ── 常備品管理 ── */}
       <div style={s.sec}>常備品（買い物リストに出さないもの）</div>
