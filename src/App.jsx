@@ -91,15 +91,21 @@ export default function App() {
     return () => unsub()
   }, [firebaseKey])
 
+  // dataRefは常に最新のdataを指す（連続更新時のstale closure対策）
+  const dataRef = useRef(data)
+  useEffect(() => { dataRef.current = data }, [data])
+
   const handleUpdate = useCallback(async (patch) => {
-    const next = { ...data, ...patch }
+    // dataRefから最新を取得（複数の連続更新でも古いstateを参照しない）
+    const next = { ...dataRef.current, ...patch }
+    dataRef.current = next   // refも即座に更新
     setData(next)
-    saveBackup(next) // localStorageに即座に保存（オフライン・再読み込み対策）
+    saveBackup(next)
     setSyncing(true)
     try { await saveRoom(firebaseKey, next) }
     catch (e) { console.error('Firebase save error:', e) }
     finally { setSyncing(false) }
-  }, [data, firebaseKey])
+  }, [firebaseKey])
 
   const handleRoomChange = useCallback((code) => {
     localStorage.setItem(LS_ROOM, code)
@@ -114,10 +120,6 @@ export default function App() {
   , [staples])
 
   // 買い物リストに追加（常備品・重複を除外）
-  // dataRefを使ってクロージャの古い値を避ける
-  const dataRef = useRef(data)
-  useEffect(() => { dataRef.current = data }, [data])
-
   const addToList = useCallback((ings, mealName) => {
     const currentItems = dataRef.current.items || []
     const newItems = ings
