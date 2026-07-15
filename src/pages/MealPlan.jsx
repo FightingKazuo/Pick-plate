@@ -130,6 +130,7 @@ function MySetsSection({ mySets, onAddSet, confirmedNames }) {
                 border:'.5px solid var(--border)', fontFamily:'var(--font)',
                 background: alreadyAdded ? 'var(--surface2)' : 'var(--surface)',
                 transition:'background .1s', opacity: alreadyAdded ? 0.5 : 1,
+                touchAction:'manipulation', WebkitTapHighlightColor:'rgba(0,0,0,0)',
               }}>
               <div style={{fontSize:13,fontWeight:500,marginBottom:3,color: alreadyAdded?'var(--text3)':'var(--text)'}}>
                 {alreadyAdded ? '✓ ' : ''}{set.name}
@@ -369,7 +370,7 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
       </div>
 
       {/* 本体 */}
-      <div style={{flex:1,overflowY:'auto',padding:'14px',paddingBottom:90}}>
+      <div style={{flex:1,overflowY:'auto',padding:'14px',paddingBottom:90,WebkitOverflowScrolling:'touch'}}>
 
         {/* 追加済み */}
         {confirmed.length > 0 && (
@@ -433,7 +434,7 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
                   padding:'11px 13px',cursor:'pointer',
                   borderBottom: i===visibleResults.length-1&&!hasMore ? 'none' : '.5px solid var(--border)',
                   background:'var(--surface)', border:'none',
-                  borderBottom: i===visibleResults.length-1&&!hasMore ? 'none' : '.5px solid var(--border)',
+                  touchAction:'manipulation', WebkitTapHighlightColor:'rgba(0,0,0,0)',
                 }}>
                   <div style={{fontSize:14,fontWeight:500}}>
                     {r.name}
@@ -481,7 +482,7 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
             {filteredHist.map((m, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',borderBottom:'.5px solid var(--border)'}}>
                 <button onClick={() => { handleAdd({name:m.name,ings:m.ings||[]}); addHistory(m); setHistList(getHistory()) }}
-                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13}}>
+                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13,touchAction:'manipulation'}}>
                   {m.name}
                 </button>
                 <button onClick={e => deleteHist(m.name, e)}
