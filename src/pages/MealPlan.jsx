@@ -150,8 +150,10 @@ function MySetsSection({ mySets, onAddSet, confirmedNames }) {
 // 食材パネル（編集・除外・カスタム保存対応）
 // ════════════════════════════════════════════
 function IngPanel({ mealName, defaultIngs, staples }) {
+  // defaultIngsが未定義でもクラッシュしないように保護
+  const safeDefaultIngs = defaultIngs || []
   // カスタム食材 or デフォルト食材
-  const [ings,     setIngs]     = useState(() => resolveIngs(mealName, defaultIngs))
+  const [ings,     setIngs]     = useState(() => resolveIngs(mealName, safeDefaultIngs))
   const [excluded, setExcluded] = useState(() => getExcludedIngs(mealName))
   const [editing,  setEditing]  = useState(false)
   const [newIng,   setNewIng]   = useState('')
@@ -174,8 +176,8 @@ function IngPanel({ mealName, defaultIngs, staples }) {
   }
 
   const resetToDefault = () => {
-    saveCustomIngs(mealName, defaultIngs || [])
-    setIngs(defaultIngs || [])
+    saveCustomIngs(mealName, safeDefaultIngs)
+    setIngs(safeDefaultIngs)
   }
 
   return (
@@ -385,7 +387,7 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
                   </span>
                   <span onClick={e=>{e.stopPropagation();handleRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 4px',cursor:'pointer',lineHeight:1}}>×</span>
                 </div>
-                {expandIdx===i && <IngPanel mealName={m.name} defaultIngs={m.ings} staples={staples} />}
+                {expandIdx===i && <IngPanel mealName={m.name} defaultIngs={m.ings || []} staples={staples || []} />}
               </div>
             ))}
           </div>
@@ -393,7 +395,14 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
 
         {/* Myセット */}
         <MySetsSection mySets={mySets} confirmedNames={confirmedNames} onAddSet={(meals) => {
-          meals.forEach(m => { handleAdd({name:m.name, ings:m.ings||[]}); addHistory({name:m.name, ings:m.ings||[]}) })
+          // 一括追加：forEachで1品ずつstateを更新すると再レンダリングのたびにconfirmedNamesが変わり
+          // 「すでに追加済み」と誤判定される。setLocalConfirmedを1回だけ呼ぶ
+          const toAdd = meals
+            .map(m => ({name: m.name, ings: m.ings || []}))
+            .filter(m => !confirmedNames.has(m.name))  // 現時点での未追加のみ
+          if (toAdd.length === 0) return
+          setLocalConfirmed(prev => [...prev, ...toAdd])  // 一括でstate更新
+          toAdd.forEach(m => { onAdd(m); addHistory(m) }) // 親・履歴への通知
           setHistList(getHistory())
         }} />
 
