@@ -89,6 +89,26 @@ function addCustomMenu(meal) {
   }
 }
 
+// ── カスタム食材（料理ごとにユーザーが編集した食材リスト）──
+function getCustomIngs(mealName) {
+  try {
+    const map = JSON.parse(localStorage.getItem('customIngs') || '{}')
+    return map[mealName] !== undefined ? map[mealName] : null
+  } catch { return null }
+}
+function saveCustomIngs(mealName, ings) {
+  try {
+    const map = JSON.parse(localStorage.getItem('customIngs') || '{}')
+    map[mealName] = ings
+    localStorage.setItem('customIngs', JSON.stringify(map))
+  } catch {}
+}
+// カスタム食材があればそちら、なければデフォルト食材を返す
+function resolveIngs(mealName, defaultIngs) {
+  const custom = getCustomIngs(mealName)
+  return custom !== null ? custom : (defaultIngs || [])
+}
+
 // ── マイセット（複数料理をまとめて登録）──
 // localStorageから取得（Firebase版はdataから受け取る）
 function getMySetsLocal() {
