@@ -327,7 +327,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
     const meal = {name, ings}
     addCustomMenu(meal)
     addHistory(meal)
-    onAdd(meal)
+    handleAdd(meal)
     setCustomName(''); setCustomIngs(''); setAddingCustom(false)
     setHistList(getHistory())
   }
@@ -374,7 +374,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
                     🍽 {m.name}
                     {m.ings?.length>0 && <span style={{fontSize:9,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:4,padding:'1px 5px',marginLeft:4}}>{expandIdx===i?'▲':'▼'} 食材</span>}
                   </span>
-                  <span onClick={e=>{e.stopPropagation();onRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 2px',cursor:'pointer',lineHeight:1}}>×</span>
+                  <span onClick={e=>{e.stopPropagation();handleRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 2px',cursor:'pointer',lineHeight:1}}>×</span>
                 </div>
                 {expandIdx===i && <IngPanel mealName={m.name} ings={m.ings} staples={staples} />}
               </div>
@@ -385,9 +385,10 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
         {/* Myセット */}
         <MySetsSection mySets={mySets} onAddSet={(meals) => {
           meals.forEach(m => {
-            onAdd({ name: m.name, ings: m.ings || [] })
+            handleAdd({ name: m.name, ings: m.ings || [] })
             addHistory({ name: m.name, ings: m.ings || [] })
           })
+          setHistList(getHistory())
         }} confirmedNames={confirmedNames} />
 
 
@@ -503,7 +504,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
             {filteredHist.map((m,i)=>(
               <div key={i} style={{display:'flex',alignItems:'center',borderBottom:'.5px solid var(--border)'}}>
                 <button
-                  onClick={()=>{onAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
+                  onClick={()=>{handleAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
                   style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13}}
                 >{m.name}</button>
                 <button
