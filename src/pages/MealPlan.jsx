@@ -564,15 +564,21 @@ export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
 
   const getList = (key) => { const v=meals[key]; return Array.isArray(v)?v:v?[v]:[] }
 
+  // mealsをrefで持つ（複数品連続追加でも古い値を参照しない）
+  const mealsRef = useRef(meals)
+  useEffect(() => { mealsRef.current = meals }, [meals])
+
   const addMeal = (key, meal) => {
-    const excluded  = getExcludedIngs(meal.name)
-    // カスタム食材があればそちらを優先
-    const baseIngs  = resolveIngs(meal.name, meal.ings || [])
-    const addIngs   = baseIngs.filter(ing => !excluded.includes(ing))
+    const excluded   = getExcludedIngs(meal.name)
+    const baseIngs   = resolveIngs(meal.name, meal.ings || [])
+    const addIngs    = baseIngs.filter(ing => !excluded.includes(ing))
     if (addIngs.length > 0) onAddToList(addIngs, meal.name)
-    // mealオブジェクトにも最新の食材を反映
     const mealToSave = { ...meal, ings: baseIngs }
-    onUpdate({ meals:{...meals,[key]:[...getList(key), mealToSave]} })
+    // mealsRefから最新を取得して上書きを防ぐ
+    const currentMeals = mealsRef.current
+    const updated = { ...currentMeals, [key]: [...(Array.isArray(currentMeals[key]) ? currentMeals[key] : currentMeals[key] ? [currentMeals[key]] : []), mealToSave] }
+    mealsRef.current = updated
+    onUpdate({ meals: updated })
   }
   const removeMeal = (key, idx) => {
     const list = getList(key).filter((_,i)=>i!==idx)
