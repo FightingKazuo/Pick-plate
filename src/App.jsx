@@ -114,8 +114,12 @@ export default function App() {
   , [staples])
 
   // 買い物リストに追加（常備品・重複を除外）
+  // dataRefを使ってクロージャの古い値を避ける
+  const dataRef = useRef(data)
+  useEffect(() => { dataRef.current = data }, [data])
+
   const addToList = useCallback((ings, mealName) => {
-    const currentItems = data.items || []
+    const currentItems = dataRef.current.items || []
     const newItems = ings
       .filter(ing => !isStaple(ing))
       .filter(ing => !currentItems.find(i => i.name === ing))
@@ -125,7 +129,7 @@ export default function App() {
         checked: false, source: 'meal', mealName,
       }))
     if (newItems.length > 0) handleUpdate({ items: [...currentItems, ...newItems] })
-  }, [data.items, isStaple, handleUpdate])
+  }, [isStaple, handleUpdate])
 
   return (
     <div style={css.app}>
