@@ -246,37 +246,49 @@ function IngPanel({ mealName, defaultIngs, staples }) {
 const SUGGEST_INIT = 20   // 初期表示件数
 const SUGGEST_MORE = 20   // 「もっと見る」で追加する件数
 
-function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onRemove, onDone }) {
-  const [query,      setQuery]      = useState('')
-  const [aiResults,  setAiResults]  = useState([])
-  const [aiLoading,  setAiLoading]  = useState(false)
-  const [aiError,    setAiError]    = useState('')
-  const [expandIdx,  setExpandIdx]  = useState(null)
-  const [showCount,  setShowCount]  = useState(SUGGEST_INIT)
-  const [doneAnim,   setDoneAnim]   = useState(false)
-  const [histList,   setHistList]   = useState(getHistory)
+function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, staples, onAdd, onRemove, onDone }) {
+  // ローカルstateで追加済みを管理（Firebase遅延に依存しない）
+  const [localConfirmed, setLocalConfirmed] = useState(initialConfirmed || [])
+  const [query,        setQuery]        = useState('')
+  const [aiResults,    setAiResults]    = useState([])
+  const [aiLoading,    setAiLoading]    = useState(false)
+  const [aiError,      setAiError]      = useState('')
+  const [expandIdx,    setExpandIdx]    = useState(null)
+  const [showCount,    setShowCount]    = useState(SUGGEST_INIT)
+  const [doneAnim,     setDoneAnim]     = useState(false)
+  const [histList,     setHistList]     = useState(getHistory)
   const [addingCustom, setAddingCustom] = useState(false)
   const [customName,   setCustomName]   = useState('')
   const [customIngs,   setCustomIngs]   = useState('')
-  const [searchFocused, setSearchFocused] = useState(false)
   const isComposing = useRef(false)
   const timer       = useRef(null)
 
-  const confirmedNames = new Set(confirmed.map(c=>c.name))
+  const confirmed      = localConfirmed
+  const confirmedNames = new Set(confirmed.map(c => c.name))
   const customMenus    = getCustomMenus()
 
-  // ── サジェスト一覧（ローカルDB＋カスタム）──
-  // queryあり→絞り込み、queryなし→全DB（先頭20件）＋カスタムメニュー
+  // 追加（ローカルstate + 親への通知）
+  const handleAdd = (meal) => {
+    if (confirmedNames.has(meal.name)) return
+    setLocalConfirmed(prev => [...prev, meal])
+    onAdd(meal)
+  }
+  // 削除（ローカルstate + 親への通知）
+  const handleRemove = (idx) => {
+    setLocalConfirmed(prev => prev.filter((_, i) => i !== idx))
+    onRemove(idx)
+  }
+
+  // ── サジェスト一覧 ──
   const localResults = useMemo(() => {
     const cm = customMenus.filter(m =>
-      !query || m.name.includes(query) || (m.ings||[]).some(i=>i.includes(query))
+      !query || m.name.includes(query) || (m.ings||[]).some(i => i.includes(query))
     )
-    const db = searchRecipes(query || '')  // 空文字で全件返る
-    const dbFiltered = db.filter(r => !cm.find(c => c.name === r.name))
-    return [...cm, ...dbFiltered]
+    const db = searchRecipes(query || '')
+    return [...cm, ...db.filter(r => !cm.find(c => c.name === r.name))]
   }, [query])
 
-  // AI検索（queryあり時のみ）
+  // AI検索
   useEffect(() => {
     setAiError('')
     if (!query || query.length < 1) { setAiResults([]); setAiLoading(false); return }
@@ -285,46 +297,41 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
     setAiLoading(true)
     timer.current = setTimeout(async () => {
       try {
-        const key = localStorage.getItem('geminiKey')||''
+        const key = localStorage.getItem('geminiKey') || ''
         if (!key) { setAiLoading(false); return }
         const ai = await fetchGeminiSuggestions(query, key)
-        const localNames = new Set(localResults.map(r=>r.name))
-        setAiResults(ai.filter(r=>!localNames.has(r.name)).map(r=>({...r,fromAI:true})))
+        const names = new Set(localResults.map(r => r.name))
+        setAiResults(ai.filter(r => !names.has(r.name)).map(r => ({ ...r, fromAI: true })))
       } catch(e) {
-          console.error(e)
-          setAiError(e.message?.slice(0,80) || 'Gemini APIエラー')
-          setTimeout(() => setAiError(''), 5000) // 5秒後に消す
-        } finally { setAiLoading(false) }
+        const msg = e.message || 'Gemini APIエラー'
+        setAiError(msg.includes('無料枠') ? msg : msg.slice(0, 60))
+        setTimeout(() => setAiError(''), 5000)
+      } finally { setAiLoading(false) }
     }, 600)
     return () => { clearTimeout(timer.current); setAiLoading(false) }
   }, [query])
 
-  // 全候補（ローカル＋AI）、確定済みを除外
-  const allResults = useMemo(() => {
-    return [...localResults, ...aiResults].filter(r => !confirmedNames.has(r.name))
-  }, [localResults, aiResults, confirmed])
+  const allResults    = useMemo(() =>
+    [...localResults, ...aiResults].filter(r => !confirmedNames.has(r.name))
+  , [localResults, aiResults, confirmed])
 
   const visibleResults = allResults.slice(0, showCount)
   const hasMore        = allResults.length > showCount
 
   const pick = (r) => {
-    onAdd({name:r.name, ings:r.ings||[]})
-    addHistory({name:r.name, ings:r.ings||[]})
+    handleAdd({ name: r.name, ings: r.ings || [] })
+    addHistory({ name: r.name, ings: r.ings || [] })
     setHistList(getHistory())
     setQuery('')
     setAiResults([])
     setShowCount(SUGGEST_INIT)
   }
 
-  // テンプレ
-
-
-  // カスタムメニュー追加
   const saveCustom = () => {
     const name = customName.trim()
     if (!name) return
-    const ings = customIngs.split(/[,、，]+/).map(s=>s.trim()).filter(Boolean)
-    const meal = {name, ings}
+    const ings = customIngs.split(/[,、，]+/).map(s => s.trim()).filter(Boolean)
+    const meal = { name, ings }
     addCustomMenu(meal)
     addHistory(meal)
     handleAdd(meal)
@@ -332,14 +339,15 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
     setHistList(getHistory())
   }
 
-  // 履歴削除
   const deleteHist = (name, e) => {
     e.stopPropagation()
     removeHistory(name)
     setHistList(getHistory())
   }
 
-  const filteredHist = histList.filter(h => !confirmedNames.has(h.name) && (!query || h.name.includes(query)))
+  const filteredHist = histList.filter(h =>
+    !confirmedNames.has(h.name) && (!query || h.name.includes(query))
+  )
 
   const handleDone = () => {
     if (confirmed.length > 0) { setDoneAnim(true); setTimeout(onDone, 700) }
@@ -347,7 +355,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
   }
 
   return (
-    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease',WebkitOverflowScrolling:'touch'}}>
+    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease'}}>
 
       {/* ヘッダー */}
       <div style={{padding:'14px 16px 12px',background:'var(--surface)',borderBottom:'.5px solid var(--border)',flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
@@ -355,7 +363,7 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
         <div style={{flex:1}}>
           <div style={{fontSize:15,fontWeight:600}}>{dayLabel} {mealLabel}</div>
           <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
-            {confirmed.length>0 ? confirmed.map(m=>m.name).join('・') : '料理を選んでください'}
+            {confirmed.length > 0 ? confirmed.map(m => m.name).join('・') : '料理を選んでください'}
           </div>
         </div>
       </div>
@@ -367,131 +375,100 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
         {confirmed.length > 0 && (
           <div style={{marginBottom:16}}>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>追加済み</div>
-            {confirmed.map((m,i)=>(
+            {confirmed.map((m,i) => (
               <div key={i} style={{background:'var(--green-l)',borderRadius:'var(--rs)',overflow:'hidden',marginBottom:5}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,padding:'9px 11px',cursor:'pointer'}} onClick={()=>setExpandIdx(expandIdx===i?null:i)}>
+                <div style={{display:'flex',alignItems:'center',gap:6,padding:'9px 11px',cursor:'pointer'}} onClick={() => setExpandIdx(expandIdx===i?null:i)}>
                   <span style={{flex:1,fontSize:14,fontWeight:500,color:'var(--green)'}}>
                     🍽 {m.name}
-                    {m.ings?.length>0 && <span style={{fontSize:9,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:4,padding:'1px 5px',marginLeft:4}}>{expandIdx===i?'▲':'▼'} 食材</span>}
+                    {m.ings?.length > 0 && <span style={{fontSize:9,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:4,padding:'1px 5px',marginLeft:4}}>{expandIdx===i?'▲':'▼'} 食材</span>}
                   </span>
-                  <span onClick={e=>{e.stopPropagation();handleRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 2px',cursor:'pointer',lineHeight:1}}>×</span>
+                  <span onClick={e=>{e.stopPropagation();handleRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 4px',cursor:'pointer',lineHeight:1}}>×</span>
                 </div>
-                {expandIdx===i && <IngPanel mealName={m.name} ings={m.ings} staples={staples} />}
+                {expandIdx===i && <IngPanel mealName={m.name} defaultIngs={m.ings} staples={staples} />}
               </div>
             ))}
           </div>
         )}
 
         {/* Myセット */}
-        <MySetsSection mySets={mySets} onAddSet={(meals) => {
-          meals.forEach(m => {
-            handleAdd({ name: m.name, ings: m.ings || [] })
-            addHistory({ name: m.name, ings: m.ings || [] })
-          })
+        <MySetsSection mySets={mySets} confirmedNames={confirmedNames} onAddSet={(meals) => {
+          meals.forEach(m => { handleAdd({name:m.name, ings:m.ings||[]}); addHistory({name:m.name, ings:m.ings||[]}) })
           setHistList(getHistory())
-        }} confirmedNames={confirmedNames} />
+        }} />
 
-
-
-        {/* 検索 */}
+        {/* 料理を選ぶ */}
         <div style={{marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>料理を選ぶ</div>
+          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:4}}>料理を選ぶ</div>
           <div style={{fontSize:11,color:'var(--text3)',marginBottom:6}}>料理名でも食材名でも検索できます（例：なす、鮭、豚バラ）</div>
           <input
             value={query}
-            onChange={e=>{setQuery(e.target.value);setShowCount(SUGGEST_INIT)}}
-            onFocus={()=>setSearchFocused(true)}
-            onBlur={()=>setTimeout(()=>setSearchFocused(false),200)}
-            onCompositionStart={()=>{isComposing.current=true}}
-            onCompositionEnd={e=>{isComposing.current=false;setQuery(e.target.value+' ');setTimeout(()=>setQuery(e.target.value),0)}}
+            onChange={e => { setQuery(e.target.value); setShowCount(SUGGEST_INIT) }}
+            onCompositionStart={() => { isComposing.current = true }}
+            onCompositionEnd={e => { isComposing.current = false; setQuery(e.target.value + ' '); setTimeout(() => setQuery(e.target.value), 0) }}
             placeholder="絞り込み検索（空欄で全件表示）"
             style={{width:'100%',padding:'10px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:14,outline:'none',background:'var(--surface)',color:'var(--text)',marginBottom:8}}
           />
 
-          {/* AIローディング・エラー */}
           {aiLoading && (
-            <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 2px',fontSize:12,color:'var(--text3)',marginBottom:6}}>
-              {[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
+            <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 2px',fontSize:12,color:'var(--text3)',marginBottom:6}}>
+              {[0,1,2].map(i => <span key={i} style={{width:5,height:5,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
               <span style={{marginLeft:4}}>Geminiで検索中...</span>
             </div>
           )}
           {aiError && !aiLoading && (
-            <div style={{
-              borderRadius:'var(--rs)', padding:'10px 12px', marginBottom:8,
-              background: aiError.includes('無料枠') ? 'var(--amber-l)' : 'var(--red-l)',
-              border: `.5px solid ${aiError.includes('無料枠') ? '#E8C94A' : '#F8C4B4'}`,
-            }}>
-              <div style={{fontSize:12, fontWeight:500, marginBottom:3,
-                color: aiError.includes('無料枠') ? 'var(--amber)' : 'var(--red)',
-              }}>
-                {aiError.includes('無料枠') ? '⏰ Gemini AI：本日の無料枠終了' : '⚠️ Gemini AI：接続エラー'}
-              </div>
-              <div style={{fontSize:11, color:'var(--text2)', lineHeight:1.6}}>
-                {aiError}
-                {aiError.includes('無料枠') && (
-                  <span style={{display:'block', marginTop:3, color:'var(--text3)'}}>
-                    ※ DBからの候補は引き続き表示されます
-                  </span>
-                )}
-              </div>
+            <div style={{borderRadius:'var(--rs)',padding:'8px 10px',marginBottom:8,background:'var(--amber-l)',border:'.5px solid #E8C94A'}}>
+              <div style={{fontSize:11,color:'var(--amber)',fontWeight:500}}>⏰ {aiError}</div>
             </div>
           )}
 
-          {/* 候補一覧（検索ありの時のみ表示） */}
-          {(query || localResults.length > 0) && <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
-            {visibleResults.length===0 && !aiLoading && (
-              <div style={{padding:'12px 13px'}}>
-                <div style={{fontSize:13,color:'var(--text3)',marginBottom: aiError?6:0}}>候補が見つかりません</div>
-                {aiError && (
-                  <div style={{fontSize:11,color:'var(--amber)',background:'var(--amber-l)',borderRadius:'var(--rs)',padding:'6px 9px',marginTop:4,border:'.5px solid #E8C94A'}}>
-                    ⏰ {aiError}
+          {/* 候補リスト */}
+          {(query || localResults.length > 0) && (
+            <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
+              {visibleResults.length === 0 && !aiLoading && (
+                <div style={{padding:'12px 13px',fontSize:13,color:'var(--text3)'}}>候補が見つかりません</div>
+              )}
+              {visibleResults.map((r, i) => (
+                <button key={i} onClick={() => pick(r)} style={{
+                  display:'block',width:'100%',textAlign:'left',fontFamily:'var(--font)',
+                  padding:'11px 13px',cursor:'pointer',
+                  borderBottom: i===visibleResults.length-1&&!hasMore ? 'none' : '.5px solid var(--border)',
+                  background:'var(--surface)', border:'none',
+                  borderBottom: i===visibleResults.length-1&&!hasMore ? 'none' : '.5px solid var(--border)',
+                }}>
+                  <div style={{fontSize:14,fontWeight:500}}>
+                    {r.name}
+                    {r.fromAI && <span style={{fontSize:9,background:'var(--green-l)',color:'var(--green)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>✨ AI</span>}
+                    {r.isCustom && <span style={{fontSize:9,background:'var(--purple-l)',color:'var(--purple)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>マイメニュー</span>}
                   </div>
-                )}
-              </div>
-            )}
-            {visibleResults.map((r,i)=>(
-              <button key={i}
-              onClick={()=>pick(r)}
-              style={{
-                width:'100%', textAlign:'left', fontFamily:'var(--font)',
-                padding:'11px 13px',cursor:'pointer',
-                borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
-                background:'var(--surface)', border:'none', borderBottom: i===visibleResults.length-1&&!hasMore?'none':'.5px solid var(--border)',
-                transition:'background .1s',
-              }}
-              onMouseEnter={e=>e.currentTarget.style.background='var(--green-l)'}
-              onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}
-              >
-                <div style={{fontSize:14,fontWeight:500}}>
-                  {r.name}
-                  {r.fromAI && <span style={{fontSize:9,background:'var(--green-l)',color:'var(--green)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>✨ AI</span>}
-                  {r.isCustom && <span style={{fontSize:9,background:'var(--purple-l)',color:'var(--purple)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>マイメニュー</span>}
-                </div>
-                {r.ings?.length>0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{r.ings.slice(0,5).join('・')}</div>}
-              </button>
-            ))}
-            {hasMore && (
-              <div onClick={()=>setShowCount(c=>c+SUGGEST_MORE)} style={{padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',borderTop:'.5px solid var(--border)',background:'var(--green-l)'}}>
-                もっと見る（残り{allResults.length-showCount}件）
-              </div>
-            )}
-          </div>}
+                  {r.ings?.length > 0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{r.ings.slice(0,5).join('・')}</div>}
+                </button>
+              ))}
+              {hasMore && (
+                <button onClick={() => setShowCount(c => c + SUGGEST_MORE)} style={{
+                  display:'block',width:'100%',padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',
+                  borderTop:'.5px solid var(--border)',background:'var(--green-l)',border:'none',fontFamily:'var(--font)',
+                }}>
+                  もっと見る（残り{allResults.length - showCount}件）
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* カスタムメニュー追加 */}
         <div style={{marginBottom:16}}>
           {!addingCustom ? (
-            <button onClick={()=>setAddingCustom(true)} style={{width:'100%',padding:'9px',background:'none',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',fontSize:13,color:'var(--text3)',cursor:'pointer'}}>
+            <button onClick={() => setAddingCustom(true)} style={{width:'100%',padding:'9px',background:'none',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',fontSize:13,color:'var(--text3)',cursor:'pointer',fontFamily:'var(--font)'}}>
               ＋ リストにないメニューを追加
             </button>
           ) : (
             <div style={{background:'var(--surface2)',borderRadius:'var(--rs)',padding:12}}>
               <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontWeight:500}}>新しいメニューを登録（次回から候補に出ます）</div>
-              <input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="料理名 *" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:6}}/>
-              <input value={customIngs} onChange={e=>setCustomIngs(e.target.value)} placeholder="食材（カンマ区切り）" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:8}}/>
+              <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="料理名 *" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:6}}/>
+              <input value={customIngs} onChange={e => setCustomIngs(e.target.value)} placeholder="食材（カンマ区切り）" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:8}}/>
               <div style={{display:'flex',gap:6}}>
-                <button onClick={()=>{setAddingCustom(false);setCustomName('');setCustomIngs('')}} style={{flex:1,padding:'8px',background:'var(--surface)',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'var(--text2)'}}>キャンセル</button>
-                <button onClick={saveCustom} style={{flex:1,padding:'8px',background:'var(--green)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'#fff',fontWeight:500}}>登録して追加</button>
+                <button onClick={() => { setAddingCustom(false); setCustomName(''); setCustomIngs('') }} style={{flex:1,padding:'8px',background:'var(--surface)',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'var(--text2)',fontFamily:'var(--font)'}}>キャンセル</button>
+                <button onClick={saveCustom} style={{flex:1,padding:'8px',background:'var(--green)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'#fff',fontWeight:500,fontFamily:'var(--font)'}}>登録して追加</button>
               </div>
             </div>
           )}
@@ -501,16 +478,16 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
         {filteredHist.length > 0 && (
           <div>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>履歴</div>
-            {filteredHist.map((m,i)=>(
+            {filteredHist.map((m, i) => (
               <div key={i} style={{display:'flex',alignItems:'center',borderBottom:'.5px solid var(--border)'}}>
-                <button
-                  onClick={()=>{handleAdd({name:m.name,ings:m.ings||[]});addHistory(m);setHistList(getHistory())}}
-                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13}}
-                >{m.name}</button>
-                <button
-                  onClick={e=>deleteHist(m.name,e)}
-                  style={{fontSize:11,color:'var(--text3)',padding:'3px 7px',borderRadius:'var(--rs)',border:'.5px solid var(--border)',background:'none',cursor:'pointer',marginRight:6}}
-                >削除</button>
+                <button onClick={() => { handleAdd({name:m.name,ings:m.ings||[]}); addHistory(m); setHistList(getHistory()) }}
+                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13}}>
+                  {m.name}
+                </button>
+                <button onClick={e => deleteHist(m.name, e)}
+                  style={{fontSize:11,color:'var(--text3)',padding:'3px 7px',borderRadius:'var(--rs)',border:'.5px solid var(--border)',background:'none',cursor:'pointer',marginRight:6,fontFamily:'var(--font)'}}>
+                  削除
+                </button>
                 <span style={{fontSize:18,color:'var(--green)',fontWeight:300,padding:'0 4px'}}>＋</span>
               </div>
             ))}
@@ -521,18 +498,19 @@ function InputPage({ dayLabel, mealLabel, confirmed, mySets, staples, onAdd, onR
       {/* フッター */}
       <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'10px 14px',paddingBottom:'calc(10px + env(safe-area-inset-bottom))',background:'var(--surface)',borderTop:'.5px solid var(--border)'}}>
         <button onClick={handleDone} style={{
-          width:'100%',padding:'13px',border:'none',borderRadius:'var(--rs)',fontSize:14,fontWeight:600,cursor:'pointer',transition:'background .2s',
-          background:doneAnim?'#52B788':'var(--green)',color:'#fff',
+          width:'100%',padding:'13px',border:'none',borderRadius:'var(--rs)',fontSize:14,fontWeight:600,cursor:'pointer',transition:'background .2s',fontFamily:'var(--font)',
+          background: doneAnim ? '#52B788' : 'var(--green)', color:'#fff',
         }}>
           {doneAnim
-            ? `✓ ${confirmed.map(m=>m.name).join('・')} を登録しました`
-            : confirmed.length>0 ? `${confirmed.map(m=>m.name).join('・')} で確定` : '閉じる'
+            ? `✓ ${confirmed.map(m => m.name).join('・')} を登録しました`
+            : confirmed.length > 0 ? `${confirmed.map(m => m.name).join('・')} で確定` : '閉じる'
           }
         </button>
       </div>
     </div>
   )
 }
+
 
 // ════════════════════════════════════════════
 // 一覧ページ
