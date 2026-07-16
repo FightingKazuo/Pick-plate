@@ -115,6 +115,14 @@ function getMySetsLocal() {
   try { return JSON.parse(localStorage.getItem('mySets') || '[]') } catch { return [] }
 }
 
+// ── カロリーキャッシュ（Nutrition.jsxと共有）──
+function getCachedCalories(mealName) {
+  try {
+    const cache = JSON.parse(localStorage.getItem('nutritionCache') || '{}')
+    return cache[mealName]?.calories ?? null
+  } catch { return null }
+}
+
 // ── アニメーション ──
 if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
   const st = document.createElement('style')
@@ -545,6 +553,19 @@ function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, s
 // ════════════════════════════════════════════
 // 一覧ページ
 // ════════════════════════════════════════════
+// 一覧用：料理チップ（カロリー表示付き）
+function MealChipWithCal({ meal, onClick, onRemove }) {
+  const cal = getCachedCalories(meal.name)
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',background:'var(--green-l)',borderRadius:'var(--rs)',cursor:'pointer'}}
+      onClick={onClick}>
+      <span style={{flex:1,fontSize:13,fontWeight:500,color:'var(--green)'}}>🍽 {meal.name}</span>
+      {cal !== null && <span style={{fontSize:10,color:'var(--green)',opacity:.7,flexShrink:0}}>{cal}kcal</span>}
+      <span onClick={onRemove} style={{fontSize:15,color:'var(--text3)',lineHeight:1,padding:'0 2px',cursor:'pointer',flexShrink:0}}>×</span>
+    </div>
+  )
+}
+
 export default function MealPlan({ data, onUpdate, onAddToList, staples }) {
   const dates     = getDisplayDates()
   const meals     = data?.meals     || {}
