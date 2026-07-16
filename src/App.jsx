@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { saveRoom, subscribeRoom } from './firebase'
 import MealPlan from './pages/MealPlan'
-import ShoppingList, { guessCategory } from './pages/ShoppingList'
+import ShoppingList, { guessCategory, normalizeIngredient } from './pages/ShoppingList'
 import Settings from './pages/Settings'
 
 export const DEFAULT_STAPLES = [
@@ -123,8 +123,9 @@ export default function App() {
   const addToList = useCallback((ings, mealName) => {
     const currentItems = dataRef.current.items || []
     const newItems = ings
-      .filter(ing => !isStaple(ing))
-      .filter(ing => !currentItems.find(i => i.name === ing))
+      .map(ing => normalizeIngredient(ing))      // 表記ゆれを統一
+      .filter(ing => !isStaple(ing))             // 常備品除外
+      .filter(ing => !currentItems.find(i => i.name === ing)) // 重複除外
       .map(ing => ({
         id: Date.now() + Math.random(),
         name: ing, category: guessCategory(ing),
