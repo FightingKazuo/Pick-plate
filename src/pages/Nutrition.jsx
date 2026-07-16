@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { calcNutritionFromDB } from '../nutritionDB'
 
 const DAY_SHORT = ['日','月','火','水','木','金','土']
 const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日']
@@ -58,19 +59,67 @@ async function callGemini(prompt, apiKey) {
   return ''
 }
 
-async function fetchNutrition(mealName, apiKey) {
+async function fetchNutrition(mealName, ings, apiKey) {
   const cached = getCachedNutr(mealName)
   if (cached) return cached
-  if (!apiKey) return null
-  const text = await callGemini(
-    `「${mealName}」一人前の栄養素を推定してJSON形式のみで返してください。前後に説明文不要。
+
+  // ① まずDBで計算
+  const dbResult = calcNutritionFromDB(ings)
+  const coverage = dbResult ? dbResult.dbCoverage / Math.max(dbResult.totalIngs, 1) : 0
+
+  // ② DBカバレッジが低い（50%未満）かAPIキーがある場合はGeminiで補完
+  if (apiKey && (!dbResult || coverage < 0.5 || dbResult.missingIngs?.length > 0)) {
+    const ingDesc = ings?.length > 0
+      ? `食材：${ings.join('、')}`
+      : `料理名：${mealName}`
+    const text = await callGemini(
+      `「${mealName}」一人前の栄養素を推定してJSON形式のみで返してください。${ingDesc}。前後に説明文不要。
 {"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"fiber":数値,"salt":数値,"vitaminC":数値}
 calories=kcal, protein/fat/carbs/fiber/salt=g, vitaminC=mg。不明な場合0を入れること。`, apiKey)
-  try {
-    const clean = text.replace(/```json|```/g,'').trim()
-    const parsed = JSON.parse(clean)
-    if (typeof parsed.calories === 'number') { setCache(mealName, parsed); return parsed }
-  } catch {}
+    try {
+      const clean  = text.replace(/```json|```/g,'').trim()
+      const parsed = JSON.parse(clean)
+      if (typeof parsed.calories === 'number') {
+        // DBとGeminiを合算（DBにある食材はDB値優先、ない食材はGemini推定分を加算）
+        let final = parsed
+        if (dbResult && dbResult.dbCoverage > 0) {
+          // DB値がある食材のDB分 + Geminiの推定からDB分を差し引いた差分
+          // ※簡略化: DBカバレッジが高い場合はDB優先、低い場合はGemini優先
+          const w = coverage  // DB重み
+          final = {
+            calories: Math.round(dbResult.calories * w + parsed.calories * (1-w)),
+            protein:  Math.round((dbResult.protein  * w + parsed.protein  * (1-w)) * 10) / 10,
+            fat:      Math.round((dbResult.fat       * w + parsed.fat       * (1-w)) * 10) / 10,
+            carbs:    Math.round((dbResult.carbs     * w + parsed.carbs     * (1-w)) * 10) / 10,
+            fiber:    Math.round((dbResult.fiber     * w + parsed.fiber     * (1-w)) * 10) / 10,
+            salt:     Math.round((dbResult.salt      * w + parsed.salt      * (1-w)) * 10) / 10,
+            vitaminC: Math.round(dbResult.vitaminC   * w + parsed.vitaminC  * (1-w)),
+            _source: `db+gemini(${Math.round(coverage*100)}%)`,
+          }
+        } else {
+          final = { ...parsed, _source: 'gemini' }
+        }
+        setCache(mealName, final)
+        return final
+      }
+    } catch {}
+  }
+
+  // DBのみの結果を返す
+  if (dbResult) {
+    const result = {
+      calories: dbResult.calories,
+      protein:  dbResult.protein,
+      fat:      dbResult.fat,
+      carbs:    dbResult.carbs,
+      fiber:    dbResult.fiber,
+      salt:     dbResult.salt,
+      vitaminC: dbResult.vitaminC,
+      _source:  `db(${Math.round(coverage*100)}%)`,
+    }
+    setCache(mealName, result)
+    return result
+  }
   return null
 }
 
@@ -126,14 +175,20 @@ function SummaryGrid({ totals }) {
 }
 
 // ── 日別ビュー ──
-function DayView({ date, meals, apiKey }) {
+function DayView({ date, meals, apiKey, person, members }) {
   const [nutritions, setNutritions] = useState({})
   const [loading,    setLoading]    = useState(new Set())
   const [expanded,   setExpanded]   = useState(null)
 
   const dayMeals = MEALS.flatMap(meal => {
     const v = meals[slotKey(date, meal)]
-    return (Array.isArray(v)?v:v?[v]:[]).map(m=>({meal,name:m.name,ings:m.ings}))
+    return (Array.isArray(v)?v:v?[v]:[])
+      .filter(m => !m.for || m.for === 'both' || m.for === person || person === 'both')
+      .map(m => {
+        // 2人分表示のとき、2人料理のカロリーは×2
+        const multiplier = (person === 'both' && (!m.for || m.for === 'both')) ? 2 : 1
+        return {meal, name:m.name, ings:m.ings, multiplier}
+      })
   })
 
   // 栄養素取得
@@ -144,7 +199,7 @@ function DayView({ date, meals, apiKey }) {
       const cached = getCachedNutr(m.name)
       if (cached) { setNutritions(p=>({...p,[m.name]:cached})); return }
       setLoading(p=>new Set([...p,m.name]))
-      fetchNutrition(m.name, apiKey).then(d => {
+      fetchNutrition(m.name, m.ings, apiKey).then(d => {
         setNutritions(p=>({...p,[m.name]:d}))
         setLoading(p=>{const n=new Set(p);n.delete(m.name);return n})
       })
@@ -153,7 +208,8 @@ function DayView({ date, meals, apiKey }) {
 
   const totals = dayMeals.reduce((acc,m) => {
     const n = nutritions[m.name]; if(!n) return acc
-    return Object.fromEntries(NUTR_LABELS.map(({key})=>[key,(acc[key]||0)+(n[key]||0)]))
+    const mul = m.multiplier || 1
+    return Object.fromEntries(NUTR_LABELS.map(({key})=>[key,(acc[key]||0)+(n[key]||0)*mul]))
   }, {})
   const hasData = Object.values(totals).some(v=>v>0)
 
@@ -225,7 +281,7 @@ function DayView({ date, meals, apiKey }) {
 }
 
 // ── 週間ビュー ──
-function WeekView({ dates, meals, apiKey }) {
+function WeekView({ dates, meals, apiKey, person, members }) {
   const [nutritions,  setNutritions]  = useState({})
   const [advice,      setAdvice]      = useState('')
   const [advLoading,  setAdvLoading]  = useState(false)
@@ -245,7 +301,7 @@ function WeekView({ dates, meals, apiKey }) {
       const cached = getCachedNutr(name)
       if (cached) { setNutritions(p=>({...p,[name]:cached})); return }
       if (!apiKey) return
-      fetchNutrition(name, apiKey).then(d => {
+      fetchNutrition(name, null, apiKey).then(d => {
         if(d) setNutritions(p=>({...p,[name]:d}))
       })
     })
@@ -255,7 +311,8 @@ function WeekView({ dates, meals, apiKey }) {
   const dayTotals = dates.map(date => {
     const dayMeals = MEALS.flatMap(meal => {
       const v = meals[slotKey(date,meal)]
-      return Array.isArray(v)?v:v?[v]:[]
+      return (Array.isArray(v)?v:v?[v]:[])
+        .filter(m => !m.for || m.for==='both' || m.for===person || person==='both')
     })
     return dayMeals.reduce((acc,m) => {
       const n = nutritions[m.name]; if(!n) return acc
@@ -354,12 +411,15 @@ function WeekView({ dates, meals, apiKey }) {
 }
 
 // ── メイン ──
-export default function Nutrition({ data }) {
-  const [view,      setView]      = useState('day')   // 'day' | 'week'
+export default function Nutrition({ data, members }) {
+  const [view,      setView]      = useState('day')
   const [activeDay, setActiveDay] = useState(2)
+  const [person,    setPerson]    = useState('both') // 'both'|'member0'|'member1'
   const dates  = getDisplayDates()
   const meals  = data?.meals || {}
   const apiKey = localStorage.getItem('geminiKey') || ''
+  const m0 = members?.[0] || '自分'
+  const m1 = members?.[1] || '相手'
 
   return (
     <div style={{paddingBottom:80}}>
@@ -372,6 +432,18 @@ export default function Nutrition({ data }) {
             color: view===v.id?'var(--green)':'var(--text3)',
             fontSize:13,fontWeight:view===v.id?600:400,cursor:'pointer',fontFamily:'var(--font)',
           }}>{v.label}</button>
+        ))}
+      </div>
+
+      {/* 人物フィルタ */}
+      <div style={{display:'flex',gap:6,padding:'8px 14px',borderBottom:'.5px solid var(--border)'}}>
+        {[{id:'both',label:'2人合計'},{id:'member0',label:m0},{id:'member1',label:m1}].map(p=>(
+          <button key={p.id} onClick={()=>setPerson(p.id)} style={{
+            padding:'4px 12px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,
+            background: person===p.id?'var(--green)':'var(--surface2)',
+            color: person===p.id?'#fff':'var(--text2)',
+            fontFamily:'var(--font)',fontWeight:person===p.id?500:400,
+          }}>{p.label}</button>
         ))}
       </div>
 
@@ -403,8 +475,8 @@ export default function Nutrition({ data }) {
 
       <div style={{padding:'14px'}}>
         {view === 'day'
-          ? <DayView  key={activeDay} date={dates[activeDay]} meals={meals} apiKey={apiKey} />
-          : <WeekView key="week"      dates={dates}           meals={meals} apiKey={apiKey} />
+          ? <DayView  key={`${activeDay}-${person}`} date={dates[activeDay]} meals={meals} apiKey={apiKey} person={person} members={[m0,m1]} />
+          : <WeekView key={`week-${person}`} dates={dates} meals={meals} apiKey={apiKey} person={person} members={[m0,m1]} />
         }
       </div>
     </div>
