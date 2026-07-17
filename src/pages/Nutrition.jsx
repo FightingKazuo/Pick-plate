@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { calcNutritionFromDB } from '../nutritionDB'
+import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
 
 const DAY_SHORT = ['日','月','火','水','木','金','土']
 const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日']
@@ -149,6 +150,28 @@ function NutrBar({ label, value, unit, max, color, showLabel=true }) {
       <div style={{background:'var(--border)',borderRadius:4,height:5,overflow:'hidden'}}>
         <div style={{width:`${pct}%`,height:'100%',background: over?'#FC8181':color,borderRadius:4,transition:'width .5s'}}/>
       </div>
+      {/* 食事追加モーダル */}
+      {quickAdd && (
+        <QuickAddModal
+          date={quickAdd.date}
+          mealSlot={quickAdd.meal}
+          apiKey={apiKey}
+          onAdd={(meal) => {
+            // データはonUpdateがないのでwindow経由でApp.jsxのhandleUpdateを呼ぶ
+            // → MealPlan.jsxのaddMealと同じ形式でdataに追加する
+            // Nutritionは読み取り専用なので、App.jsxのonUpdateをpropsで受け取る必要あり
+            // 今回は window.dispatchEvent でカスタムイベントを飛ばす簡易実装
+            const date = quickAdd.date
+            const y = date.getFullYear()
+            const m = String(date.getMonth()+1).padStart(2,'0')
+            const d = String(date.getDate()).padStart(2,'0')
+            const key = `${y}-${m}-${d}-${meal.meal}`
+            window.dispatchEvent(new CustomEvent('pickplate:addMeal', { detail: { key, meal } }))
+            setQuickAdd(null)
+          }}
+          onClose={() => setQuickAdd(null)}
+        />
+      )}
     </div>
   )
 }
@@ -243,7 +266,14 @@ function DayView({ date, meals, apiKey, person, members }) {
         if(!items.length) return null
         return (
           <div key={meal} style={{marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:600,color:'var(--text3)',marginBottom:4}}>{meal}</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                <div style={{fontSize:11,fontWeight:600,color:'var(--text3)'}}>{meal}</div>
+                <button onClick={() => setQuickAdd({date, meal})} style={{
+                  fontSize:11,color:'var(--green)',background:'var(--green-l)',border:'none',
+                  borderRadius:12,padding:'2px 9px',cursor:'pointer',fontFamily:'var(--font)',
+                  touchAction:'manipulation',
+                }}>＋ 追加</button>
+              </div>
             {items.map((m,i) => {
               const n = nutritions[m.name]
               const isLoading = loading.has(m.name)
@@ -411,10 +441,147 @@ function WeekView({ dates, meals, apiKey, person, members }) {
 }
 
 // ── メイン ──
+// ════════════════════════════════════════
+// 食事追加モーダル（栄養タブから直接入力）
+// ════════════════════════════════════════
+function QuickAddModal({ date, mealSlot, onAdd, onClose, apiKey }) {
+  const [query,    setQuery]    = useState('')
+  const [results,  setResults]  = useState([])
+  const [aiLoad,   setAiLoad]   = useState(false)
+  const [category, setCategory] = useState(mealSlot) // 朝/昼/夜/間食
+  const isComposing = useRef(false)
+  const dropTouched = useRef(false)
+  const timer       = useRef(null)
+  const [focused,   setFocused]  = useState(false)
+  const [hovId,     setHovId]    = useState(null)
+
+  // カスタムメニュー（自由入力）
+  const [customMode, setCustomMode] = useState(false)
+  const [customName, setCustomName] = useState('')
+
+  useEffect(() => {
+    if (!query) { setResults([]); return }
+    if (isComposing.current) return
+    const local = searchRecipes(query)
+    setResults(local)
+    if (!apiKey) return
+    clearTimeout(timer.current)
+    setAiLoad(true)
+    timer.current = setTimeout(async () => {
+      try {
+        const ai = await fetchGeminiSuggestions(query, apiKey)
+        const names = new Set(local.map(r => r.name))
+        setResults([...local, ...ai.filter(r => !names.has(r.name)).map(r => ({...r, fromAI:true}))])
+      } catch(e) { console.error(e) } finally { setAiLoad(false) }
+    }, 600)
+    return () => clearTimeout(timer.current)
+  }, [query])
+
+  const pick = (r) => {
+    onAdd({ name: r.name, ings: r.ings || [], meal: category })
+    onClose()
+  }
+  const addCustom = () => {
+    const name = customName.trim() || query.trim()
+    if (!name) return
+    onAdd({ name, ings: [], meal: category })
+    onClose()
+  }
+
+  const MEAL_CATS = ['朝', '昼', '夜', '間食']
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:600,display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+      <div style={{background:'var(--surface)',borderRadius:'18px 18px 0 0',maxHeight:'85dvh',display:'flex',flexDirection:'column',boxShadow:'0 -4px 24px rgba(0,0,0,.15)'}}>
+        {/* ハンドル */}
+        <div style={{width:36,height:4,borderRadius:2,background:'var(--border2)',margin:'10px auto 0',flexShrink:0}}/>
+
+        {/* ヘッダー */}
+        <div style={{padding:'10px 16px 12px',borderBottom:'.5px solid var(--border)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+          <div style={{fontSize:15,fontWeight:600}}>食事を追加</div>
+          <button onClick={onClose} style={{width:28,height:28,borderRadius:'50%',background:'var(--surface2)',border:'none',fontSize:16,cursor:'pointer',color:'var(--text2)'}}>✕</button>
+        </div>
+
+        <div style={{flex:1,overflowY:'auto',padding:'12px 14px',paddingBottom:24}}>
+          {/* 食事区分 */}
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:7}}>食事区分</div>
+            <div style={{display:'flex',gap:6}}>
+              {MEAL_CATS.map(cat => (
+                <button key={cat} onClick={() => setCategory(cat)} style={{
+                  flex:1,padding:'6px 0',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:500,fontFamily:'var(--font)',
+                  background: category===cat?'var(--green)':'var(--surface2)',
+                  color:      category===cat?'#fff':'var(--text2)',
+                }}>{cat}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* 検索 */}
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:7}}>料理を検索</div>
+            <div style={{position:'relative'}}>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onCompositionStart={() => { isComposing.current = true }}
+                onCompositionEnd={e => { isComposing.current = false; setQuery(e.target.value+' '); setTimeout(()=>setQuery(e.target.value),0) }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setTimeout(() => { if(!dropTouched.current) setFocused(false); dropTouched.current=false }, 300)}
+                placeholder="例：外食、ラーメン、コンビニ弁当"
+                style={{width:'100%',padding:'10px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:14,outline:'none',background:'var(--surface)',color:'var(--text)'}}
+              />
+              {/* ドロップダウン */}
+              {focused && (results.length > 0 || aiLoad) && (
+                <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'var(--surface)',border:'.5px solid var(--border)',borderRadius:'var(--r)',boxShadow:'0 8px 24px rgba(0,0,0,.12)',zIndex:700,maxHeight:220,overflowY:'auto'}}
+                  onMouseDown={() => { dropTouched.current = true }}
+                  onTouchStart={() => { dropTouched.current = true }}
+                >
+                  {aiLoad && <div style={{padding:'9px 13px',fontSize:12,color:'var(--text3)'}}>検索中...</div>}
+                  {results.map((r,i) => (
+                    <button key={i} onClick={() => pick(r)} style={{
+                      display:'block',width:'100%',textAlign:'left',padding:'10px 13px',cursor:'pointer',
+                      borderBottom:i===results.length-1?'none':'.5px solid var(--border)',
+                      background:'var(--surface)',border:'none',fontFamily:'var(--font)',touchAction:'manipulation',
+                    }}>
+                      <div style={{fontSize:13,fontWeight:500}}>{r.name}{r.fromAI&&<span style={{fontSize:9,background:'var(--green-l)',color:'var(--green)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>✨AI</span>}</div>
+                      {r.ings?.length>0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>{r.ings.slice(0,4).join('・')}</div>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 自由入力 */}
+          <div>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:7}}>
+              リストにないものを追加
+            </div>
+            <div style={{display:'flex',gap:6}}>
+              <input
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+                onKeyDown={e => e.key==='Enter' && addCustom()}
+                placeholder="外食・残り物など自由入力"
+                style={{flex:1,padding:'9px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none'}}
+              />
+              <button onClick={addCustom} style={{padding:'9px 14px',background:'var(--green)',color:'#fff',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',fontFamily:'var(--font)',fontWeight:500,touchAction:'manipulation'}}>
+                追加
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Nutrition({ data, members }) {
   const [view,      setView]      = useState('day')
   const [activeDay, setActiveDay] = useState(2)
-  const [person,    setPerson]    = useState('both') // 'both'|'member0'|'member1'
+  const [person,    setPerson]    = useState('both')
+  const [quickAdd,  setQuickAdd]  = useState(null) // {date, meal}
   const dates  = getDisplayDates()
   const meals  = data?.meals || {}
   const apiKey = localStorage.getItem('geminiKey') || ''
