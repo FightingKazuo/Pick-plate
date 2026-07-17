@@ -198,7 +198,7 @@ function SummaryGrid({ totals }) {
 }
 
 // ── 日別ビュー ──
-function DayView({ date, meals, apiKey, person, members }) {
+function DayView({ date, meals, apiKey, person, members, onQuickAdd }) {
   const [nutritions, setNutritions] = useState({})
   const [loading,    setLoading]    = useState(new Set())
   const [expanded,   setExpanded]   = useState(null)
@@ -268,7 +268,7 @@ function DayView({ date, meals, apiKey, person, members }) {
           <div key={meal} style={{marginBottom:10}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
                 <div style={{fontSize:11,fontWeight:600,color:'var(--text3)'}}>{meal}</div>
-                <button onClick={() => setQuickAdd({date, meal})} style={{
+                <button onClick={() => onQuickAdd({date, meal})} style={{
                   fontSize:11,color:'var(--green)',background:'var(--green-l)',border:'none',
                   borderRadius:12,padding:'2px 9px',cursor:'pointer',fontFamily:'var(--font)',
                   touchAction:'manipulation',
@@ -642,7 +642,7 @@ export default function Nutrition({ data, members }) {
 
       <div style={{padding:'14px'}}>
         {view === 'day'
-          ? <DayView  key={`${activeDay}-${person}`} date={dates[activeDay]} meals={meals} apiKey={apiKey} person={person} members={[m0,m1]} />
+          ? <DayView  key={`${activeDay}-${person}`} date={dates[activeDay]} meals={meals} apiKey={apiKey} person={person} members={[m0,m1]} onQuickAdd={setQuickAdd} />
           : <WeekView key={`week-${person}`} dates={dates} meals={meals} apiKey={apiKey} person={person} members={[m0,m1]} />
         }
       </div>
