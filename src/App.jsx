@@ -83,6 +83,29 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
+  // 栄養タブからの食事追加イベントを受け取る
+  useEffect(() => {
+    const handler = (e) => {
+      const { key, meal } = e.detail
+      const currentMeals = dataRef.current.meals || {}
+      const cur = currentMeals[key]
+      const list = Array.isArray(cur) ? cur : cur ? [cur] : []
+      const updated = { ...currentMeals, [key]: [...list, meal] }
+      dataRef.current = { ...dataRef.current, meals: updated }
+      // 食材も買い物リストに追加
+      if (meal.ings?.length > 0) {
+        const excluded = (() => {
+          try { return (JSON.parse(localStorage.getItem('mealExclusions')||'{}')||{})[meal.name]||[] } catch { return [] }
+        })()
+        const addIngs = meal.ings.filter(ing => !excluded.includes(ing))
+        if (addIngs.length > 0) addToList(addIngs, meal.name)
+      }
+      handleUpdate({ meals: updated })
+    }
+    window.addEventListener('pickplate:addMeal', handler)
+    return () => window.removeEventListener('pickplate:addMeal', handler)
+  }, [handleUpdate, addToList])
+
   // Firebase購読
   useEffect(() => {
     const unsub = subscribeRoom(firebaseKey, (remoteData) => {
@@ -153,9 +176,9 @@ export default function App() {
       {!isOnline && <div style={css.offlineBanner}>オフライン中 — 接続回復後に同期されます</div>}
 
       <div style={css.content}>
-        {tab === 'meal'     && <MealPlan data={data} onUpdate={handleUpdate} onAddToList={addToList} staples={staples} />}
+        {tab === 'meal'     && <MealPlan data={data} onUpdate={handleUpdate} onAddToList={addToList} staples={staples} members={data?.members || ['自分','相手']} />}
         {tab === 'list'     && <ShoppingList data={data} onUpdate={handleUpdate} />}
-        {tab === 'nutrition' && <Nutrition data={data} />}
+        {tab === 'nutrition' && <Nutrition data={data} members={data?.members || ['自分','相手']} />}
         {tab === 'settings' && <Settings data={data} onUpdate={handleUpdate} roomCode={roomCode} onRoomChange={handleRoomChange} />}
       </div>
 
