@@ -1,6 +1,66 @@
 import { useState, useEffect, useRef } from 'react'
-import { calcNutritionFromDB } from '../nutritionDB'
 import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
+
+// ── 食品成分DB（nutritionDB.jsの内容をインライン） ──
+const FOOD_DB = {
+  '鶏もも肉':{cal:204,protein:16.6,fat:14.2,carbs:0,fiber:0,salt:0.2,vitC:3,stdG:150},
+  '鶏むね肉':{cal:116,protein:22.3,fat:1.9,carbs:0,fiber:0,salt:0.1,vitC:3,stdG:150},
+  '豚バラ':{cal:386,protein:14.4,fat:35.4,carbs:0.1,fiber:0,salt:0.1,vitC:1,stdG:100},
+  '豚ロース':{cal:263,protein:19.3,fat:19.2,carbs:0.2,fiber:0,salt:0.1,vitC:1,stdG:120},
+  '牛切り落とし':{cal:209,protein:16.5,fat:15.4,carbs:0.3,fiber:0,salt:0.1,vitC:2,stdG:120},
+  '合いびき肉':{cal:224,protein:17.1,fat:16.3,carbs:0.3,fiber:0,salt:0.2,vitC:1,stdG:100},
+  'ベーコン':{cal:405,protein:12.9,fat:39.1,carbs:0.3,fiber:0,salt:2.0,vitC:0,stdG:30},
+  '鮭':{cal:133,protein:22.3,fat:4.1,carbs:0.1,fiber:0,salt:0.2,vitC:0,stdG:100},
+  'えび':{cal:91,protein:18.4,fat:0.3,carbs:2.5,fiber:0,salt:0.7,vitC:0,stdG:80},
+  'あさり':{cal:30,protein:6.0,fat:0.3,carbs:0.4,fiber:0,salt:2.2,vitC:1,stdG:100},
+  '玉ねぎ':{cal:37,protein:1.0,fat:0.1,carbs:8.4,fiber:1.5,salt:0,vitC:8,stdG:100},
+  '長ねぎ':{cal:34,protein:1.4,fat:0.1,carbs:7.3,fiber:2.2,salt:0,vitC:14,stdG:50},
+  'にんじん':{cal:39,protein:0.7,fat:0.2,carbs:9.3,fiber:2.8,salt:0,vitC:6,stdG:80},
+  'じゃがいも':{cal:76,protein:1.8,fat:0.1,carbs:17.3,fiber:8.9,salt:0,vitC:35,stdG:100},
+  'キャベツ':{cal:23,protein:1.3,fat:0.2,carbs:5.2,fiber:1.8,salt:0,vitC:41,stdG:100},
+  'トマト':{cal:20,protein:0.7,fat:0.1,carbs:4.7,fiber:1.0,salt:0,vitC:15,stdG:150},
+  'なす':{cal:22,protein:1.1,fat:0.1,carbs:5.1,fiber:2.2,salt:0,vitC:4,stdG:100},
+  'ほうれん草':{cal:20,protein:2.2,fat:0.4,carbs:3.1,fiber:2.8,salt:0,vitC:35,stdG:80},
+  'もやし':{cal:37,protein:1.7,fat:0.1,carbs:6.5,fiber:1.3,salt:0,vitC:8,stdG:100},
+  'ブロッコリー':{cal:37,protein:4.3,fat:0.5,carbs:6.6,fiber:4.4,salt:0,vitC:120,stdG:80},
+  '豆腐':{cal:56,protein:4.9,fat:3.0,carbs:2.0,fiber:0.3,salt:0,vitC:0,stdG:150},
+  '卵':{cal:151,protein:12.3,fat:10.3,carbs:0.3,fiber:0,salt:0.4,vitC:0,stdG:60},
+  '牛乳':{cal:67,protein:3.3,fat:3.8,carbs:4.8,fiber:0,salt:0.1,vitC:1,stdG:200},
+  'バター':{cal:745,protein:0.6,fat:81.0,carbs:0.2,fiber:0,salt:1.5,vitC:0,stdG:10},
+  'ヨーグルト':{cal:62,protein:3.6,fat:3.0,carbs:4.9,fiber:0,salt:0.1,vitC:1,stdG:100},
+  'ごはん':{cal:168,protein:2.5,fat:0.3,carbs:37.1,fiber:0.3,salt:0,vitC:0,stdG:150},
+  '食パン':{cal:264,protein:9.3,fat:4.4,carbs:46.7,fiber:2.3,salt:1.3,vitC:0,stdG:60},
+  'パスタ':{cal:378,protein:13.0,fat:1.9,carbs:73.9,fiber:5.7,salt:0,vitC:0,stdG:80},
+  'うどん':{cal:105,protein:2.6,fat:0.4,carbs:21.6,fiber:0.8,salt:0.3,vitC:0,stdG:200},
+  'カップ麺':{cal:355,protein:8.8,fat:14.1,carbs:47.5,fiber:2.0,salt:5.5,vitC:0,stdG:85},
+  '袋ラーメン':{cal:449,protein:10.6,fat:17.7,carbs:60.8,fiber:2.8,salt:6.1,vitC:0,stdG:100},
+  'レトルトカレー':{cal:121,protein:5.9,fat:5.5,carbs:12.3,fiber:2.1,salt:2.1,vitC:3,stdG:200},
+  '醤油':{cal:71,protein:7.7,fat:0,carbs:10.1,fiber:0,salt:14.5,vitC:0,stdG:15},
+  '味噌':{cal:217,protein:12.5,fat:6.0,carbs:21.9,fiber:4.9,salt:12.4,vitC:0,stdG:15},
+  '砂糖':{cal:384,protein:0,fat:0,carbs:99.2,fiber:0,salt:0,vitC:0,stdG:5},
+  'ごま油':{cal:921,protein:0,fat:100,carbs:0,fiber:0,salt:0,vitC:0,stdG:5},
+  'サラダ油':{cal:921,protein:0,fat:100,carbs:0,fiber:0,salt:0,vitC:0,stdG:8},
+  'オリーブ油':{cal:921,protein:0,fat:100,carbs:0,fiber:0,salt:0,vitC:0,stdG:8},
+  'バナナ':{cal:86,protein:1.1,fat:0.2,carbs:22.5,fiber:1.1,salt:0,vitC:16,stdG:100},
+  '納豆':{cal:200,protein:16.5,fat:10.0,carbs:12.1,fiber:6.7,salt:0,vitC:0,stdG:45},
+}
+
+function calcNutritionFromDB(ings) {
+  if (!ings || ings.length === 0) return null
+  const r = {cal:0,protein:0,fat:0,carbs:0,fiber:0,salt:0,vitC:0}
+  let covered = 0
+  for (const ing of ings) {
+    const key = Object.keys(FOOD_DB).find(k => ing.includes(k) || k.includes(ing))
+    if (key) {
+      const d = FOOD_DB[key]; const g = d.stdG
+      r.cal+=d.cal*g/100; r.protein+=d.protein*g/100; r.fat+=d.fat*g/100
+      r.carbs+=d.carbs*g/100; r.fiber+=d.fiber*g/100; r.salt+=d.salt*g/100; r.vitC+=d.vitC*g/100
+      covered++
+    }
+  }
+  const rd = v=>Math.round(v*10)/10
+  return {calories:Math.round(r.cal),protein:rd(r.protein),fat:rd(r.fat),carbs:rd(r.carbs),fiber:rd(r.fiber),salt:rd(r.salt),vitaminC:Math.round(r.vitC),dbCoverage:covered,totalIngs:ings.length,missingIngs:[],_source:'db'}
+}
 
 const DAY_SHORT = ['日','月','火','水','木','金','土']
 const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日']
