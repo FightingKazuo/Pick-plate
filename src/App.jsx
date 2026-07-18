@@ -80,29 +80,6 @@ export default function App() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
   }, [])
 
-  // 栄養タブからの食事追加イベントを受け取る
-  useEffect(() => {
-    const handler = (e) => {
-      const { key, meal } = e.detail
-      const currentMeals = dataRef.current.meals || {}
-      const cur = currentMeals[key]
-      const list = Array.isArray(cur) ? cur : cur ? [cur] : []
-      const updated = { ...currentMeals, [key]: [...list, meal] }
-      dataRef.current = { ...dataRef.current, meals: updated }
-      // 食材も買い物リストに追加
-      if (meal.ings?.length > 0) {
-        const excluded = (() => {
-          try { return (JSON.parse(localStorage.getItem('mealExclusions')||'{}')||{})[meal.name]||[] } catch { return [] }
-        })()
-        const addIngs = meal.ings.filter(ing => !excluded.includes(ing))
-        if (addIngs.length > 0) addToList(addIngs, meal.name)
-      }
-      handleUpdate({ meals: updated })
-    }
-    window.addEventListener('pickplate:addMeal', handler)
-    return () => window.removeEventListener('pickplate:addMeal', handler)
-  }, [handleUpdate, addToList])
-
   // Firebase購読
   useEffect(() => {
     const unsub = subscribeRoom(firebaseKey, (remoteData) => {
@@ -156,6 +133,28 @@ export default function App() {
       }))
     if (newItems.length > 0) handleUpdate({ items: [...currentItems, ...newItems] })
   }, [isStaple, handleUpdate])
+
+  // 栄養タブ・外部からの食事追加イベント（addToList/handleUpdateの後に定義）
+  useEffect(() => {
+    const handler = (e) => {
+      const { key, meal } = e.detail
+      const currentMeals = dataRef.current.meals || {}
+      const cur = currentMeals[key]
+      const list = Array.isArray(cur) ? cur : cur ? [cur] : []
+      const updated = { ...currentMeals, [key]: [...list, meal] }
+      dataRef.current = { ...dataRef.current, meals: updated }
+      if (meal.ings?.length > 0) {
+        const excluded = (() => {
+          try { return (JSON.parse(localStorage.getItem('mealExclusions')||'{}')||{})[meal.name]||[] } catch { return [] }
+        })()
+        const addIngs = meal.ings.filter(ing => !excluded.includes(ing))
+        if (addIngs.length > 0) addToList(addIngs, meal.name)
+      }
+      handleUpdate({ meals: updated })
+    }
+    window.addEventListener('pickplate:addMeal', handler)
+    return () => window.removeEventListener('pickplate:addMeal', handler)
+  }, [handleUpdate, addToList])
 
   return (
     <div style={css.app}>
