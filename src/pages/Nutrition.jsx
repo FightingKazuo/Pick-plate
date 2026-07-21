@@ -119,26 +119,71 @@ async function callGemini(prompt, apiKey) {
 }
 
 async function fetchNutrition(mealName, ings, apiKey) {
+  // キャッシュ確認（0kcalは無効とみなして再計算）
   const cached = getCachedNutr(mealName)
-  if (cached) return cached
+  if (cached && cached.calories > 0) return cached
+
+  // DBで計算
   const dbResult = calcNutritionFromDB(ings)
   const coverage = dbResult ? dbResult.dbCoverage / Math.max(dbResult.totalIngs, 1) : 0
-  if (apiKey && (!dbResult || coverage < 0.5)) {
-    const ingDesc = ings?.length > 0 ? `食材：${ings.join('、')}` : `料理名：${mealName}`
+
+  // Gemini呼び出し条件：
+  // ① APIキーあり
+  // ② DBカバレッジが80%未満、またはDBカロリーが50kcal未満（明らかに過小）、または食材なし
+  const needsGemini = apiKey && (
+    !dbResult ||
+    coverage < 0.8 ||
+    dbResult.calories < 50 ||
+    (ings || []).length === 0
+  )
+
+  if (needsGemini) {
+    const ingDesc = ings?.length > 0
+      ? `食材リスト：${ings.join('、')}`
+      : `料理名のみ：${mealName}`
     const text = await callGemini(
-      `「${mealName}」一人前の栄養素を推定してJSON形式のみで。${ingDesc}。前後説明不要。\n{"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"fiber":数値,"salt":数値,"vitaminC":数値}`, apiKey)
+      `「${mealName}」を一人前食べた場合の栄養素を推定してください。${ingDesc}。
+JSONのみ返答（説明・コードブロック不要）：
+{"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"fiber":数値,"salt":数値,"vitaminC":数値}
+calories=kcal、他はg（vitaminCはmg）。0は使わず必ず実際の推定値を入れること。`, apiKey)
     try {
-      const parsed = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,'').trim())
-      if (typeof parsed.calories === 'number') {
-        const result = {...parsed, _source: dbResult && coverage>0 ? `db+gemini(${Math.round(coverage*100)}%)` : 'gemini'}
-        setCachedNutr(mealName, result); return result
+      const clean = text.replace(/\`\`\`json|\`\`\`/g,'').trim()
+      const parsed = JSON.parse(clean)
+      if (typeof parsed.calories === 'number' && parsed.calories > 0) {
+        // DBとGeminiの加重平均（DBカバレッジが高いほどDB値を重視）
+        let result
+        if (dbResult && dbResult.calories > 50 && coverage >= 0.5) {
+          const w = coverage
+          result = {
+            calories: Math.round(dbResult.calories * w + parsed.calories * (1-w)),
+            protein:  Math.round((dbResult.protein * w + parsed.protein * (1-w)) * 10)/10,
+            fat:      Math.round((dbResult.fat     * w + parsed.fat     * (1-w)) * 10)/10,
+            carbs:    Math.round((dbResult.carbs   * w + parsed.carbs   * (1-w)) * 10)/10,
+            fiber:    Math.round((dbResult.fiber   * w + parsed.fiber   * (1-w)) * 10)/10,
+            salt:     Math.round((dbResult.salt    * w + parsed.salt    * (1-w)) * 10)/10,
+            vitaminC: Math.round(dbResult.vitaminC * w + parsed.vitaminC * (1-w)),
+            _source: `db+ai(${Math.round(coverage*100)}%)`,
+          }
+        } else {
+          result = { ...parsed, _source: 'ai' }
+        }
+        setCachedNutr(mealName, result)
+        return result
       }
-    } catch {}
+    } catch(e) { console.warn('Gemini parse error:', e) }
   }
-  if (dbResult) {
-    const result = { calories:dbResult.calories, protein:dbResult.protein, fat:dbResult.fat, carbs:dbResult.carbs, fiber:dbResult.fiber, salt:dbResult.salt, vitaminC:dbResult.vitaminC, _source:`db(${Math.round(coverage*100)}%)` }
-    setCachedNutr(mealName, result); return result
+
+  // DBのみ（Geminiなし・呼び出し失敗時）
+  if (dbResult && dbResult.calories > 0) {
+    const result = {
+      calories: dbResult.calories, protein: dbResult.protein, fat: dbResult.fat,
+      carbs: dbResult.carbs, fiber: dbResult.fiber, salt: dbResult.salt,
+      vitaminC: dbResult.vitaminC, _source: `db(${Math.round(coverage*100)}%)`
+    }
+    setCachedNutr(mealName, result)
+    return result
   }
+
   return null
 }
 
@@ -287,7 +332,7 @@ function QuickAddModal({ date, mealSlot, onAdd, onClose, apiKey }) {
 }
 
 // ── 日別ビュー ──
-function DayView({ date, meals, apiKey, person, onQuickAdd }) {
+function DayView({ date, meals, apiKey, person, onQuickAdd, onRemoveMeal }) {
   const [nutritions, setNutritions] = useState({})
   const [loading,    setLoading]    = useState(new Set())
   const [expanded,   setExpanded]   = useState(null)
@@ -356,11 +401,17 @@ function DayView({ date, meals, apiKey, person, onQuickAdd }) {
               const n=nutritions[m.name]; const isLoad=loading.has(m.name); const ky=`${meal}-${i}`
               return (
                 <div key={i} style={{marginBottom:4,borderRadius:'var(--rs)',overflow:'hidden',border:'.5px solid var(--border)'}}>
-                  <div style={{display:'flex',alignItems:'center',padding:'8px 10px',cursor:'pointer',background:'var(--surface)'}} onClick={()=>setExpanded(expanded===ky?null:ky)}>
-                    <span style={{flex:1,fontSize:13,fontWeight:500}}>🍽 {m.name}</span>
-                    {isLoad ? <span style={{fontSize:11,color:'var(--text3)'}}>計算中...</span>
-                            : n ? <span style={{fontSize:12,color:'var(--green)',fontWeight:600}}>{n.calories}kcal {expanded===ky?'▲':'▼'}</span>
-                                : <span style={{fontSize:11,color:'var(--text3)'}}>—</span>}
+                  <div style={{display:'flex',alignItems:'center',padding:'8px 10px',background:'var(--surface)'}}>
+                    <div style={{flex:1,cursor:'pointer',display:'flex',alignItems:'center',gap:6}} onClick={()=>setExpanded(expanded===ky?null:ky)}>
+                      <span style={{fontSize:13,fontWeight:500}}>🍽 {m.name}</span>
+                      {isLoad ? <span style={{fontSize:11,color:'var(--text3)'}}>計算中...</span>
+                              : n ? <span style={{fontSize:12,color:'var(--green)',fontWeight:600}}>{n.calories}kcal {expanded===ky?'▲':'▼'}</span>
+                                  : <span style={{fontSize:11,color:'var(--text3)'}}>—</span>}
+                    </div>
+                    <button onClick={()=>onRemoveMeal(date,meal,i)} style={{
+                      fontSize:13,color:'var(--text3)',background:'none',border:'none',
+                      cursor:'pointer',padding:'2px 6px',lineHeight:1,touchAction:'manipulation',flexShrink:0,
+                    }}>×</button>
                   </div>
                   {expanded===ky&&n&&(
                     <div style={{padding:'8px 12px',background:'var(--surface2)',borderTop:'.5px solid var(--border)'}}>
@@ -502,6 +553,14 @@ export default function Nutrition({ data, members, onUpdate }) {
   const m0 = members?.[0] || '自分'
   const m1 = members?.[1] || '相手'
 
+  const handleRemoveMeal = (date, mealTime, idx) => {
+    const key = slotKey(date, mealTime)
+    const cur = (data?.meals || {})[key]
+    const list = Array.isArray(cur) ? cur : cur ? [cur] : []
+    const updated = list.filter((_, i) => i !== idx)
+    window.dispatchEvent(new CustomEvent('pickplate:removeMeal', { detail: { key, meals: updated } }))
+  }
+
   const handleQuickAdd = (meal) => {
     const { date, meal: mealTime } = quickAdd
     const key = slotKey(date, mealTime)
@@ -551,7 +610,7 @@ export default function Nutrition({ data, members, onUpdate }) {
 
       <div style={{padding:'14px'}}>
         {view==='day'
-          ? <DayView key={`${activeDay}-${person}`} date={dates[activeDay]} meals={meals} apiKey={apiKey} person={person} onQuickAdd={setQuickAdd} />
+          ? <DayView key={`${activeDay}-${person}`} date={dates[activeDay]} meals={meals} apiKey={apiKey} person={person} onQuickAdd={setQuickAdd} onRemoveMeal={handleRemoveMeal} />
           : <WeekView key={`week-${person}`} dates={dates} meals={meals} apiKey={apiKey} person={person} />
         }
       </div>
