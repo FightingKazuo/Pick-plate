@@ -92,9 +92,19 @@ function isToday(d) {
 
 // ── キャッシュ ──
 const CACHE_KEY = 'nutritionCache'
-function getCachedNutr(name) { try { return JSON.parse(localStorage.getItem(CACHE_KEY)||'{}')[name]||null } catch { return null } }
+function getCachedNutr(name) {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY)||'{}')[name]
+    // 0kcalのキャッシュは無効（Geminiで再計算させる）
+    if (c && c.calories > 0) return c
+    return null
+  } catch { return null }
+}
 function setCachedNutr(name, data) {
   try { const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}'); c[name]={...data,_ts:Date.now()}; localStorage.setItem(CACHE_KEY,JSON.stringify(c)) } catch {}
+}
+function clearAllNutrCache() {
+  localStorage.removeItem(CACHE_KEY)
 }
 
 // ── Gemini ──
@@ -408,9 +418,11 @@ function DayView({ date, meals, apiKey, person, onQuickAdd, onRemoveMeal }) {
                               : n ? <span style={{fontSize:12,color:'var(--green)',fontWeight:600}}>{n.calories}kcal {expanded===ky?'▲':'▼'}</span>
                                   : <span style={{fontSize:11,color:'var(--text3)'}}>—</span>}
                     </div>
-                    <button onClick={()=>onRemoveMeal(date,meal,i)} style={{
-                      fontSize:13,color:'var(--text3)',background:'none',border:'none',
-                      cursor:'pointer',padding:'2px 6px',lineHeight:1,touchAction:'manipulation',flexShrink:0,
+                    <button onClick={e=>{e.stopPropagation();onRemoveMeal(date,meal,i)}} style={{
+                      fontSize:16,color:'var(--text3)',background:'var(--surface2)',border:'none',
+                      cursor:'pointer',padding:'6px 10px',lineHeight:1,touchAction:'manipulation',
+                      flexShrink:0,borderRadius:8,minWidth:36,minHeight:36,
+                      display:'flex',alignItems:'center',justifyContent:'center',
                     }}>×</button>
                   </div>
                   {expanded===ky&&n&&(
@@ -427,8 +439,11 @@ function DayView({ date, meals, apiKey, person, onQuickAdd, onRemoveMeal }) {
           </div>
         )
       })}
-      <div style={{fontSize:10,color:'var(--text3)',marginTop:8,lineHeight:1.7,padding:'7px 10px',background:'var(--surface2)',borderRadius:'var(--rs)'}}>
-        💡 Gemini AIによる推定値。実際の値は食材量・調理法により異なります。
+      <div style={{fontSize:10,color:'var(--text3)',marginTop:8,lineHeight:1.7,padding:'7px 10px',background:'var(--surface2)',borderRadius:'var(--rs)',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+        <span>💡 Gemini AIによる推定値。実際の値は食材量・調理法により異なります。</span>
+        <button onClick={()=>{clearAllNutrCache();window.location.reload()}} style={{fontSize:10,color:'var(--text3)',background:'none',border:'.5px solid var(--border2)',borderRadius:6,padding:'3px 8px',cursor:'pointer',whiteSpace:'nowrap',touchAction:'manipulation',flexShrink:0}}>
+          再計算
+        </button>
       </div>
     </>
   )
