@@ -1,688 +1,312 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
+import { useState } from 'react'
 
-const DAY_FULL  = ['日曜日','月曜日','火曜日','水曜日','木曜日','金曜日','土曜日']
-const DAY_SHORT = ['日','月','火','水','木','金','土']
-const MEALS     = ['朝','昼','夜']
+// 食材名の表記ゆれを統一する正規化テーブル
+const INGREDIENT_NORMALIZE = {
+  // ── ネギ系 ──
+  'ネギ':'長ねぎ', 'ねぎ':'長ねぎ', '葱':'長ねぎ', '長ネギ':'長ねぎ',
+  '青ねぎ':'長ねぎ', '青ネギ':'長ねぎ', 'ながねぎ':'長ねぎ',
 
-// デフォルトMyセット（初回起動時）
-export const DEFAULT_MYSETS = [
-  {
-    name: '和食の朝',
-    meals: [
-      { name: 'ごはん',     ings: [] },
-      { name: '味噌汁',     ings: ['豆腐','わかめ','長ねぎ'] },
-      { name: '納豆',       ings: ['納豆'] },
-    ]
-  },
-  {
-    name: '洋食の朝',
-    meals: [
-      { name: 'トースト',   ings: ['食パン','バター'] },
-      { name: '目玉焼き',   ings: ['卵'] },
-      { name: 'サラダ',     ings: ['レタス','トマト','きゅうり'] },
-    ]
-  },
-  {
-    name: '軽め朝食',
-    meals: [
-      { name: 'ヨーグルト', ings: [] },
-      { name: 'バナナ',     ings: ['バナナ'] },
-    ]
-  },
+  // ── にんにく ──
+  'ニンニク':'にんにく', '大蒜':'にんにく',
+
+  // ── しょうが ──
+  'ショウガ':'生姜', 'しょうが':'生姜', 'ジンジャー':'生姜',
+
+  // ── 玉ねぎ ──
+  '玉葱':'玉ねぎ', 'タマネギ':'玉ねぎ', 'たまねぎ':'玉ねぎ', 'オニオン':'玉ねぎ',
+
+  // ── にんじん ──
+  '人参':'にんじん', 'ニンジン':'にんじん', 'キャロット':'にんじん',
+
+  // ── じゃがいも ──
+  'ジャガイモ':'じゃがいも', 'ポテト':'じゃがいも', '馬鈴薯':'じゃがいも',
+
+  // ── なす（カタカナ↔ひらがな統一）──
+  'ナス':'なす', 'ナスビ':'なす', '茄子':'なす',
+
+  // ── にら ──
+  'ニラ':'にら', '韮':'にら',
+
+  // ── キャベツ ──
+  'きゃべつ':'キャベツ', '甘藍':'キャベツ',
+
+  // ── トマト・大根・こんにゃく系（完全一致のみ。缶・おろしは別物） ──
+  // ※ トマト缶・大根おろし・糸こんにゃく は別アイテムとして残す
+
+  // ── 豆腐 ──
+  '木綿豆腐':'豆腐', '絹豆腐':'豆腐', '絹ごし豆腐':'豆腐', 'もめん豆腐':'豆腐',
+
+  // ── 卵 ──
+  'たまご':'卵', 'タマゴ':'卵', '玉子':'卵',
+
+  // ── 鶏肉 ──
+  '鶏モモ肉':'鶏もも肉', 'チキン':'鶏もも肉', '鶏肉':'鶏もも肉',
+
+  // ── 豚肉（部位不明は豚バラに統一）──
+  '豚肉':'豚バラ',
+
+  // ── ひき肉（合いびき=合いびき肉）──
+  '合びき肉':'合いびき肉', '合い挽き肉':'合いびき肉', 'ミンチ':'合いびき肉',
+
+  // ── 鶏がらスープ系 ──
+  '鶏がらスープ':'鶏がらスープの素', '鶏ガラスープ':'鶏がらスープの素',
+  'チキンブイヨン':'鶏がらスープの素',
+
+  // ── 乳製品 ──
+  'ミルク':'牛乳', '生乳':'牛乳',
+  'マーガリン':'バター', '無塩バター':'バター',
+
+  // ── 醤油 ──
+  'しょうゆ':'醤油', 'ショウユ':'醤油', 'ソイソース':'醤油',
+
+  // ── 塩 ──
+  '食塩':'塩', '岩塩':'塩', '海塩':'塩',
+
+  // ── こしょう ──
+  '胡椒':'こしょう', 'コショウ':'こしょう', 'ペッパー':'こしょう',
+  '白こしょう':'こしょう', '白胡椒':'こしょう',
+
+  // ── ごま油 ──
+  'ゴマ油':'ごま油', 'セサミオイル':'ごま油', '胡麻油':'ごま油',
+
+  // ── サラダ油 ──
+  '植物油':'サラダ油', '菜種油':'サラダ油', '大豆油':'サラダ油',
+
+  // ── オリーブ油 ──
+  'オリーブオイル':'オリーブ油', 'EXバージンオリーブ油':'オリーブ油',
+
+  // ── みりん ──
+  '味醂':'みりん', '本みりん':'みりん',
+
+  // ── 酒 ──
+  '料理酒':'酒', '日本酒':'酒', '清酒':'酒',
+
+  // ── 砂糖 ──
+  '上白糖':'砂糖', 'グラニュー糖':'砂糖', '三温糖':'砂糖',
+
+  // ── 味噌 ──
+  '白みそ':'味噌', '赤みそ':'味噌', '合わせみそ':'味噌',
+
+  // ── 酢 ──
+  '米酢':'酢', '穀物酢':'酢', 'ビネガー':'酢',
+
+  // ── パスタ ──
+  'スパゲッティ':'パスタ', 'スパゲティ':'パスタ', 'ペンネ':'パスタ',
+  'フェットチーネ':'パスタ', 'リングイネ':'パスタ',
+
+  // ── ごはん ──
+  '白米':'ごはん', 'ライス':'ごはん',
+}
+
+export function normalizeIngredient(name) {
+  if (!name) return name
+  const trimmed = name.trim()
+  return INGREDIENT_NORMALIZE[trimmed] || trimmed
+}
+
+// カテゴリの表示順序（この順で並べる）
+export const CATEGORY_ORDER = [
+  '肉・魚', '野菜・果物', '乳製品・卵', '豆腐・大豆', '麺・主食', '調味料・乾物', 'その他'
 ]
 
-// 後方互換のためのダミーエクスポート（Settings.jsxから参照）
-export const DEFAULT_TEMPLATES = DEFAULT_MYSETS
-export function getTemplatesForMeal() { return [] }
+export function guessCategory(name) {
+  const map = {
+    '野菜・果物': ['玉ねぎ','にんじん','じゃがいも','キャベツ','ほうれん草','トマト','きゅうり','レタス','ブロッコリー','なす','ピーマン','もやし','小松菜','大根','かぼちゃ','ごぼう','長ねぎ','生姜','にんにく','ズッキーニ','パプリカ','水菜','春菊','ゴーヤ','白菜'],
+    '肉・魚':    ['豚','牛','鶏','ひき肉','鮭','さば','ツナ','あさり','えび','イカ','たら','ぶり','魚','肉','ベーコン','ハム','ウインナー','ソーセージ','いわし','あじ'],
+    '乳製品・卵':['卵','牛乳','バター','チーズ','ヨーグルト','生クリーム','豆乳'],
+    '調味料・乾物':['醤油','みりん','酒','砂糖','塩','味噌','酢','ごま油','サラダ油','オリーブ油','片栗粉','小麦粉','パスタ','だし','コンソメ','パン粉','白ごま','ナンプラー'],
+    '豆腐・大豆': ['豆腐','厚揚げ','油揚げ','納豆','豆乳','こんにゃく','しらたき'],
+    '缶詰・加工': ['トマト缶','デミグラスソース缶','ツナ缶','春巻きの皮','餃子の皮'],
+  }
+  for (const [cat, words] of Object.entries(map)) {
+    if (words.some(w => name.includes(w))) return cat
+  }
+  return 'その他'
+}
 
-// ── 日付 ──
-function getDisplayDates(weekOffset = 0) {
-  const today = new Date()
-  const base  = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  // weekOffset: 0=今週, -1=先週, -2=先々週...
-  return Array.from({length:7}, (_,i) => {
-    const d = new Date(base)
-    d.setDate(base.getDate() + i - 2 + weekOffset * 7)
-    return d
+// ── 食材名の正規化（重複判定用）──
+function normName(s) {
+  return s.replace(/\s/g, '').replace(/[ァ-ン]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+}
+
+// ── 重複食材をマージして count を立てる ──
+export function mergeItems(items) {
+  const map = new Map() // normName → item
+  for (const item of items) {
+    const key = normName(item.name)
+    if (map.has(key)) {
+      const existing = map.get(key)
+      existing.count = (existing.count || 1) + 1
+      // mealNames を集約
+      if (item.mealName && !existing.mealNames?.includes(item.mealName)) {
+        existing.mealNames = [...(existing.mealNames || [existing.mealName].filter(Boolean)), item.mealName]
+      }
+    } else {
+      map.set(key, { ...item, count: 1, mealNames: item.mealName ? [item.mealName] : [] })
+    }
+  }
+  return [...map.values()]
+}
+
+// ── スタイル ──
+const s = {
+  page:    { padding: '14px', paddingBottom: 80 },
+  addRow:  { display: 'flex', gap: 7, marginBottom: 12 },
+  addInp:  { flex: 1, padding: '9px 12px', border: '.5px solid var(--border2)', borderRadius: 'var(--rs)', fontSize: 14, outline: 'none' },
+  addBtn:  { padding: '9px 14px', background: 'var(--green)', color: '#fff', border: 'none', borderRadius: 'var(--rs)', fontSize: 13, fontWeight: 500 },
+  toolRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  clearBtn:{ padding: '5px 10px', background: 'var(--red-l)', color: 'var(--red)', border: 'none', borderRadius: 'var(--rs)', fontSize: 12 },
+  sec:     { fontSize: 10, fontWeight: 500, color: 'var(--text3)', letterSpacing: '.8px', textTransform: 'uppercase', marginBottom: 5, paddingBottom: 4, borderBottom: '.5px solid var(--border)' },
+  catWrap: { marginBottom: 14 },
+  item:    (chk) => ({ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 4px', cursor: 'pointer', opacity: chk ? .4 : 1, borderBottom: '.5px solid var(--border)' }),
+  circle:  (chk) => ({
+    width: 20, height: 20, flexShrink: 0,
+    border: `1.5px solid ${chk ? 'var(--green)' : 'var(--border2)'}`,
+    borderRadius: '50%', background: chk ? 'var(--green)' : 'transparent',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  }),
+  nameWrap: { flex: 1, display: 'flex', flexDirection: 'column', gap: 2 },
+  name:    (chk) => ({ fontSize: 14, textDecoration: chk ? 'line-through' : 'none' }),
+  sub:     { fontSize: 10, color: 'var(--text3)' },
+  countBadge: { fontSize: 11, background: 'var(--amber-l)', color: 'var(--amber)', borderRadius: 4, padding: '1px 6px', flexShrink: 0 },
+  mealBadge:  { fontSize: 9,  background: 'var(--green-l)', color: 'var(--green)', borderRadius: 4, padding: '1px 5px' },
+  delBtn:  { fontSize: 16, color: 'var(--text3)' },
+  prog:    { background: 'var(--surface2)', borderRadius: 'var(--rs)', padding: '9px 12px', marginBottom: 12 },
+  progRow: { display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 5 },
+  progBg:  { background: 'var(--border)', borderRadius: 4, height: 4, overflow: 'hidden' },
+  progBar: (p) => ({ background: 'var(--green)', height: '100%', width: `${p}%`, transition: 'width .3s', borderRadius: 4 }),
+  empty:   { textAlign: 'center', padding: '40px 16px', color: 'var(--text3)' },
+}
+
+const CHECK_SVG = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" width="11" height="11">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+export default function ShoppingList({ data, onUpdate }) {
+  const [newItem, setNewItem]   = useState('')
+  const [hovered, setHovered]   = useState(null)
+
+  const rawItems = data?.items || []
+  // 表示用にマージ（checked は rawItems の先頭アイテムの状態を使う）
+  const items = mergeItems(rawItems)
+
+  const updateRaw = (next) => onUpdate({ items: next })
+
+  // 追加（rawItemsに追記）
+  const addItem = (name) => {
+    const n = name.trim(); if (!n) return
+    if (rawItems.find(i => normName(i.name) === normName(n))) return
+    updateRaw([...rawItems, { id: Date.now() + Math.random(), name: n, category: guessCategory(n), checked: false, source: 'manual', count: 1, mealNames: [] }])
+    setNewItem('')
+  }
+
+  // チェック: 同名アイテム全部トグル
+  const toggle = (displayItem) => {
+    const key = normName(displayItem.name)
+    const next = rawItems.map(i => normName(i.name) === key ? { ...i, checked: !displayItem.checked } : i)
+    updateRaw(next)
+  }
+
+  // 削除: 同名アイテム全部削除
+  const remove = (displayItem) => {
+    const key = normName(displayItem.name)
+    updateRaw(rawItems.filter(i => normName(i.name) !== key))
+  }
+
+  const clearChecked = () => updateRaw(rawItems.filter(i => !i.checked))
+
+  const checkedCount = items.filter(i => i.checked).length
+  const pct = items.length ? Math.round(checkedCount / items.length * 100) : 0
+
+  // カテゴリ別グループ
+  const byCat = {}
+  items.forEach(item => {
+    const cat = item.category || 'その他'
+    if (!byCat[cat]) byCat[cat] = []
+    byCat[cat].push(item)
   })
-}
-function slotKey(date, meal) {
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}-${meal}`
-}
-function isToday(d) {
-  const t = new Date()
-  return d.getFullYear()===t.getFullYear()&&d.getMonth()===t.getMonth()&&d.getDate()===t.getDate()
-}
-const TODAY_IDX = 2
-
-// ── 除外食材 ──
-function getExclusionMap() {
-  try { return JSON.parse(localStorage.getItem('mealExclusions')||'{}') } catch { return {} }
-}
-function getExcludedIngs(mealName) { return getExclusionMap()[mealName]||[] }
-function toggleExcludeIng(mealName, ing) {
-  const exc = getExclusionMap()
-  const cur = exc[mealName]||[]
-  exc[mealName] = cur.includes(ing) ? cur.filter(x=>x!==ing) : [...cur, ing]
-  localStorage.setItem('mealExclusions', JSON.stringify(exc))
-  return exc[mealName]
-}
-
-// ── 履歴 ──
-function getHistory() {
-  try { return JSON.parse(localStorage.getItem('mealHistory')||'[]') } catch { return [] }
-}
-function addHistory(meal) {
-  const next = [meal, ...getHistory().filter(m=>m.name!==meal.name)].slice(0,50)
-  localStorage.setItem('mealHistory', JSON.stringify(next))
-}
-function removeHistory(name) {
-  localStorage.setItem('mealHistory', JSON.stringify(getHistory().filter(m=>m.name!==name)))
-}
-
-// ── カスタムメニュー（ユーザーが追加した独自レシピ）──
-function getCustomMenus() {
-  try { return JSON.parse(localStorage.getItem('customMenus')||'[]') } catch { return [] }
-}
-function addCustomMenu(meal) {
-  const cur = getCustomMenus()
-  if (!cur.find(m=>m.name===meal.name)) {
-    localStorage.setItem('customMenus', JSON.stringify([...cur, meal]))
-  }
-}
-
-// ── カスタム食材（料理ごとにユーザーが編集した食材リスト）──
-function getCustomIngs(mealName) {
-  try {
-    const map = JSON.parse(localStorage.getItem('customIngs') || '{}')
-    return map[mealName] !== undefined ? map[mealName] : null
-  } catch { return null }
-}
-function saveCustomIngs(mealName, ings) {
-  try {
-    const map = JSON.parse(localStorage.getItem('customIngs') || '{}')
-    map[mealName] = ings
-    localStorage.setItem('customIngs', JSON.stringify(map))
-  } catch {}
-}
-// カスタム食材があればそちら、なければデフォルト食材を返す
-function resolveIngs(mealName, defaultIngs) {
-  const custom = getCustomIngs(mealName)
-  return custom !== null ? custom : (defaultIngs || [])
-}
-
-// ── マイセット（複数料理をまとめて登録）──
-// localStorageから取得（Firebase版はdataから受け取る）
-function getMySetsLocal() {
-  try { return JSON.parse(localStorage.getItem('mySets') || '[]') } catch { return [] }
-}
-
-// ── カロリーキャッシュ（Nutrition.jsxと共有）──
-function getCachedCalories(mealName) {
-  try {
-    const cache = JSON.parse(localStorage.getItem('nutritionCache') || '{}')
-    return cache[mealName]?.calories ?? null
-  } catch { return null }
-}
-
-// ── アニメーション ──
-if (typeof document!=='undefined' && !document.getElementById('pp-anim')) {
-  const st = document.createElement('style')
-  st.id='pp-anim'
-  st.textContent='@keyframes pp-pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}} @keyframes pp-slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}'
-  document.head.appendChild(st)
-}
-
-// ════════════════════════════════════════════
-// マイセットセクション
-// ════════════════════════════════════════════
-function MySetsSection({ mySets, onAddSet, confirmedNames }) {
-  const sets = mySets
-  const [hov, setHov] = useState(null)
-
-  if (sets.length === 0) return null
 
   return (
-    <div style={{marginBottom:16}}>
-      <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>
-        Myセット
-      </div>
-      <div style={{display:'flex',flexDirection:'column',gap:6}}>
-        {sets.map((set, i) => {
-          const alreadyAdded = set.meals.every(m => confirmedNames.has(m.name))
-          return (
-            <button key={i}
-              disabled={alreadyAdded}
-              onClick={() => onAddSet(set.meals)}
-              style={{
-                width:'100%', textAlign:'left',
-                padding:'10px 13px', borderRadius:'var(--rs)', cursor: alreadyAdded?'default':'pointer',
-                border:'.5px solid var(--border)', fontFamily:'var(--font)',
-                background: alreadyAdded ? 'var(--surface2)' : 'var(--surface)',
-                transition:'background .1s', opacity: alreadyAdded ? 0.5 : 1,
-                touchAction:'manipulation', WebkitTapHighlightColor:'rgba(0,0,0,0)',
-              }}>
-              <div style={{fontSize:13,fontWeight:500,marginBottom:3,color: alreadyAdded?'var(--text3)':'var(--text)'}}>
-                {alreadyAdded ? '✓ ' : ''}{set.name}
-              </div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>
-                {set.meals.map(m=>m.name).join('・')}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+    <div style={s.page}>
 
-// ════════════════════════════════════════════
-// 食材パネル（編集・除外・カスタム保存対応）
-// ════════════════════════════════════════════
-function IngPanel({ mealName, defaultIngs, staples }) {
-  // defaultIngsが未定義でもクラッシュしないように保護
-  const safeDefaultIngs = defaultIngs || []
-  // カスタム食材 or デフォルト食材
-  const [ings,     setIngs]     = useState(() => resolveIngs(mealName, safeDefaultIngs))
-  const [excluded, setExcluded] = useState(() => getExcludedIngs(mealName))
-  const [editing,  setEditing]  = useState(false)
-  const [newIng,   setNewIng]   = useState('')
-
-  const toggleExclude = (ing) => setExcluded(toggleExcludeIng(mealName, ing))
-
-  const removeIng = (ing) => {
-    const next = ings.filter(x => x !== ing)
-    setIngs(next)
-    saveCustomIngs(mealName, next)
-  }
-
-  const addIng = () => {
-    const v = newIng.trim()
-    if (!v || ings.includes(v)) return
-    const next = [...ings, v]
-    setIngs(next)
-    saveCustomIngs(mealName, next)
-    setNewIng('')
-  }
-
-  const resetToDefault = () => {
-    saveCustomIngs(mealName, safeDefaultIngs)
-    setIngs(safeDefaultIngs)
-  }
-
-  return (
-    <div style={{padding:'8px 11px 11px', borderTop:'.5px solid rgba(45,106,79,.2)'}}>
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-        <span style={{fontSize:10, color:'var(--text3)'}}>
-          {editing ? '食材を編集（タップで削除）' : '食材をタップで除外（次回も自動除外）'}
-        </span>
-        <div style={{display:'flex', gap:4}}>
-          <button onClick={() => setEditing(v=>!v)} style={{fontSize:10, padding:'2px 7px', border:'.5px solid var(--border2)', borderRadius:10, background:'none', cursor:'pointer', color:'var(--text3)'}}>
-            {editing ? '完了' : '✏️ 編集'}
-          </button>
-          {editing && (
-            <button onClick={resetToDefault} style={{fontSize:10, padding:'2px 7px', border:'.5px solid var(--border2)', borderRadius:10, background:'none', cursor:'pointer', color:'var(--text3)'}}>
-              リセット
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div style={{display:'flex', flexWrap:'wrap', gap:4, marginBottom: editing?8:0}}>
-        {ings.map((ing,i) => {
-          const isExc = excluded.includes(ing)
-          const isSt  = staples?.some(s=>ing.includes(s)||s.includes(ing))
-          if (editing) {
-            return (
-              <button key={i} onClick={() => removeIng(ing)} style={{
-                fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer',
-                background:'var(--red-l)', color:'var(--red)',
-              }}>✕ {ing}</button>
-            )
-          }
-          return (
-            <button key={i} onClick={() => toggleExclude(ing)} style={{
-              fontSize:11, padding:'3px 9px', borderRadius:20, border:'none', cursor:'pointer', transition:'all .12s',
-              background: isExc?'#eee': isSt?'var(--surface2)':'var(--green-l)',
-              color:      isExc?'#bbb': isSt?'var(--text3)':'var(--green)',
-              textDecoration: isExc?'line-through':'none',
-            }}>
-              {isExc?'✕ ': isSt?'':'🛒 '}{ing}
-            </button>
-          )
-        })}
-      </div>
-
-      {editing && (
-        <div style={{display:'flex', gap:5, marginTop:4}}>
-          <input
-            value={newIng}
-            onChange={e=>setNewIng(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&addIng()}
-            placeholder="食材を追加..."
-            style={{flex:1, padding:'6px 9px', border:'.5px solid var(--border2)', borderRadius:'var(--rs)', fontSize:12, outline:'none'}}
-          />
-          <button onClick={addIng} style={{padding:'6px 10px', background:'var(--green)', color:'#fff', border:'none', borderRadius:'var(--rs)', fontSize:12, cursor:'pointer'}}>追加</button>
-        </div>
-      )}
-
-      {!editing && excluded.length>0 && (
-        <div style={{fontSize:10,color:'var(--text3)',marginTop:4}}>✕ {excluded.join('・')} は今後も自動除外</div>
-      )}
-    </div>
-  )
-}
-
-// ════════════════════════════════════════════
-// 全画面入力ページ
-// ════════════════════════════════════════════
-const SUGGEST_INIT = 20   // 初期表示件数
-const SUGGEST_MORE = 20   // 「もっと見る」で追加する件数
-
-function InputPage({ dayLabel, mealLabel, confirmed: initialConfirmed, mySets, staples, members, onAdd, onRemove, onDone }) {
-  // ローカルstateで追加済みを管理（Firebase遅延に依存しない）
-  const [localConfirmed, setLocalConfirmed] = useState(initialConfirmed || [])
-  const [query,        setQuery]        = useState('')
-  const [aiResults,    setAiResults]    = useState([])
-  const [aiLoading,    setAiLoading]    = useState(false)
-  const [aiError,      setAiError]      = useState('')
-  const [expandIdx,    setExpandIdx]    = useState(null)
-  const [showCount,    setShowCount]    = useState(SUGGEST_INIT)
-  const [doneAnim,     setDoneAnim]     = useState(false)
-  const [histList,     setHistList]     = useState(getHistory)
-  const [addingCustom, setAddingCustom] = useState(false)
-  const [customName,   setCustomName]   = useState('')
-  const [customIngs,   setCustomIngs]   = useState('')
-  const isComposing = useRef(false)
-  const timer       = useRef(null)
-
-  const confirmed      = localConfirmed
-  const confirmedNames = new Set(confirmed.map(c => c.name))
-  const customMenus    = getCustomMenus()
-
-  // 追加（ローカルstate + 親への通知）
-  const handleAdd = (meal) => {
-    if (confirmedNames.has(meal.name)) return
-    setLocalConfirmed(prev => [...prev, meal])
-    onAdd(meal)
-  }
-  // 削除（ローカルstate + 親への通知）
-  const handleRemove = (idx) => {
-    setLocalConfirmed(prev => prev.filter((_, i) => i !== idx))
-    onRemove(idx)
-  }
-
-  // ── サジェスト一覧 ──
-  const localResults = useMemo(() => {
-    const cm = customMenus.filter(m =>
-      !query || m.name.includes(query) || (m.ings||[]).some(i => i.includes(query))
-    )
-    const db = searchRecipes(query || '')
-    return [...cm, ...db.filter(r => !cm.find(c => c.name === r.name))]
-  }, [query])
-
-  // AI検索
-  useEffect(() => {
-    setAiError('')
-    if (!query || query.length < 1) { setAiResults([]); setAiLoading(false); return }
-    if (isComposing.current) return
-    clearTimeout(timer.current)
-    setAiLoading(true)
-    timer.current = setTimeout(async () => {
-      try {
-        const key = localStorage.getItem('geminiKey') || ''
-        if (!key) { setAiLoading(false); return }
-        const ai = await fetchGeminiSuggestions(query, key)
-        const names = new Set(localResults.map(r => r.name))
-        setAiResults(ai.filter(r => !names.has(r.name)).map(r => ({ ...r, fromAI: true })))
-      } catch(e) {
-        const msg = e.message || 'Gemini APIエラー'
-        setAiError(msg.includes('無料枠') ? msg : msg.slice(0, 60))
-        setTimeout(() => setAiError(''), 5000)
-      } finally { setAiLoading(false) }
-    }, 600)
-    return () => { clearTimeout(timer.current); setAiLoading(false) }
-  }, [query])
-
-  const allResults    = useMemo(() =>
-    [...localResults, ...aiResults].filter(r => !confirmedNames.has(r.name))
-  , [localResults, aiResults, confirmed])
-
-  const visibleResults = allResults.slice(0, showCount)
-  const hasMore        = allResults.length > showCount
-
-  const pick = (r) => {
-    handleAdd({ name: r.name, ings: r.ings || [] })
-    addHistory({ name: r.name, ings: r.ings || [] })
-    setHistList(getHistory())
-    setQuery('')
-    setAiResults([])
-    setShowCount(SUGGEST_INIT)
-  }
-
-  const saveCustom = () => {
-    const name = customName.trim()
-    if (!name) return
-    const ings = customIngs.split(/[,、，]+/).map(s => s.trim()).filter(Boolean)
-    const meal = { name, ings }
-    addCustomMenu(meal)
-    addHistory(meal)
-    handleAdd(meal)
-    setCustomName(''); setCustomIngs(''); setAddingCustom(false)
-    setHistList(getHistory())
-  }
-
-  const deleteHist = (name, e) => {
-    e.stopPropagation()
-    removeHistory(name)
-    setHistList(getHistory())
-  }
-
-  const filteredHist = histList.filter(h =>
-    !confirmedNames.has(h.name) && (!query || h.name.includes(query))
-  )
-
-  const handleDone = () => {
-    if (confirmed.length > 0) { setDoneAnim(true); setTimeout(onDone, 700) }
-    else onDone()
-  }
-
-  return (
-    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:500,display:'flex',flexDirection:'column',animation:'pp-slideIn .22s ease'}}>
-
-      {/* ヘッダー */}
-      <div style={{padding:'14px 16px 12px',background:'var(--surface)',borderBottom:'.5px solid var(--border)',flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={onDone} style={{width:34,height:34,borderRadius:'50%',border:'none',background:'var(--surface2)',fontSize:18,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text2)',flexShrink:0}}>←</button>
-        <div style={{flex:1}}>
-          <div style={{fontSize:15,fontWeight:600}}>{dayLabel} {mealLabel}</div>
-          <div style={{fontSize:11,color:'var(--text3)',marginTop:1}}>
-            {confirmed.length > 0 ? confirmed.map(m => m.name).join('・') : '料理を選んでください'}
-          </div>
-        </div>
-      </div>
-
-      {/* 本体 */}
-      <div style={{flex:1,overflowY:'auto',padding:'14px',paddingBottom:90,WebkitOverflowScrolling:'touch'}}>
-
-        {/* 追加済み */}
-        {confirmed.length > 0 && (
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>追加済み</div>
-            {confirmed.map((m,i) => (
-              <div key={i} style={{background:'var(--green-l)',borderRadius:'var(--rs)',overflow:'hidden',marginBottom:5}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,padding:'9px 11px',cursor:'pointer'}} onClick={() => setExpandIdx(expandIdx===i?null:i)}>
-                  <span style={{flex:1,fontSize:14,fontWeight:500,color:'var(--green)'}}>
-                    🍽 {m.name}
-                    {m.ings?.length > 0 && <span style={{fontSize:9,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:4,padding:'1px 5px',marginLeft:4}}>{expandIdx===i?'▲':'▼'} 食材</span>}
-                  </span>
-                  <span onClick={e=>{e.stopPropagation();handleRemove(i);if(expandIdx===i)setExpandIdx(null)}} style={{fontSize:16,color:'var(--text3)',padding:'0 4px',cursor:'pointer',lineHeight:1}}>×</span>
-                </div>
-                {expandIdx===i && <IngPanel mealName={m.name} defaultIngs={m.ings || []} staples={staples || []} />}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Myセット */}
-        <MySetsSection mySets={mySets} confirmedNames={confirmedNames} onAddSet={(meals) => {
-          // 一括追加：forEachで1品ずつstateを更新すると再レンダリングのたびにconfirmedNamesが変わり
-          // 「すでに追加済み」と誤判定される。setLocalConfirmedを1回だけ呼ぶ
-          const toAdd = meals
-            .map(m => ({name: m.name, ings: m.ings || []}))
-            .filter(m => !confirmedNames.has(m.name))  // 現時点での未追加のみ
-          if (toAdd.length === 0) return
-          setLocalConfirmed(prev => [...prev, ...toAdd])  // 一括でstate更新
-          toAdd.forEach(m => { onAdd(m); addHistory(m) }) // 親・履歴への通知
-          setHistList(getHistory())
-        }} />
-
-        {/* 料理を選ぶ */}
-        <div style={{marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:4}}>料理を選ぶ</div>
-          <div style={{fontSize:11,color:'var(--text3)',marginBottom:6}}>料理名でも食材名でも検索できます（例：なす、鮭、豚バラ）</div>
-          <input
-            value={query}
-            onChange={e => { setQuery(e.target.value); setShowCount(SUGGEST_INIT) }}
-            onCompositionStart={() => { isComposing.current = true }}
-            onCompositionEnd={e => { isComposing.current = false; setQuery(e.target.value + ' '); setTimeout(() => setQuery(e.target.value), 0) }}
-            placeholder="絞り込み検索（空欄で全件表示）"
-            style={{width:'100%',padding:'10px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:14,outline:'none',background:'var(--surface)',color:'var(--text)',marginBottom:8}}
-          />
-
-          {aiLoading && (
-            <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 2px',fontSize:12,color:'var(--text3)',marginBottom:6}}>
-              {[0,1,2].map(i => <span key={i} style={{width:5,height:5,borderRadius:'50%',background:'var(--green)',display:'inline-block',animation:`pp-pulse 1.2s ${i*.2}s infinite`}}/>)}
-              <span style={{marginLeft:4}}>Geminiで検索中...</span>
-            </div>
-          )}
-          {aiError && !aiLoading && (
-            <div style={{borderRadius:'var(--rs)',padding:'8px 10px',marginBottom:8,background:'var(--amber-l)',border:'.5px solid #E8C94A'}}>
-              <div style={{fontSize:11,color:'var(--amber)',fontWeight:500}}>⏰ {aiError}</div>
-            </div>
-          )}
-
-          {/* 候補リスト */}
-          {(query || localResults.length > 0) && (
-            <div style={{border:'.5px solid var(--border)',borderRadius:'var(--r)',overflow:'hidden'}}>
-              {visibleResults.length === 0 && !aiLoading && (
-                <div style={{padding:'12px 13px',fontSize:13,color:'var(--text3)'}}>候補が見つかりません</div>
-              )}
-              {visibleResults.map((r, i) => (
-                <button key={i} onClick={() => pick(r)} style={{
-                  display:'block',width:'100%',textAlign:'left',fontFamily:'var(--font)',
-                  padding:'11px 13px',cursor:'pointer',
-                  borderBottom: i===visibleResults.length-1&&!hasMore ? 'none' : '.5px solid var(--border)',
-                  background:'var(--surface)', border:'none',
-                  touchAction:'manipulation', WebkitTapHighlightColor:'rgba(0,0,0,0)',
-                }}>
-                  <div style={{fontSize:14,fontWeight:500}}>
-                    {r.name}
-                    {r.fromAI && <span style={{fontSize:9,background:'var(--green-l)',color:'var(--green)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>✨ AI</span>}
-                    {r.isCustom && <span style={{fontSize:9,background:'var(--purple-l)',color:'var(--purple)',borderRadius:3,padding:'1px 5px',marginLeft:5}}>マイメニュー</span>}
-                  </div>
-                  {r.ings?.length > 0 && <div style={{fontSize:11,color:'var(--text3)',marginTop:2}}>{r.ings.slice(0,5).join('・')}</div>}
-                </button>
-              ))}
-              {hasMore && (
-                <button onClick={() => setShowCount(c => c + SUGGEST_MORE)} style={{
-                  display:'block',width:'100%',padding:'11px 13px',cursor:'pointer',fontSize:13,color:'var(--green)',fontWeight:500,textAlign:'center',
-                  borderTop:'.5px solid var(--border)',background:'var(--green-l)',border:'none',fontFamily:'var(--font)',
-                }}>
-                  もっと見る（残り{allResults.length - showCount}件）
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* カスタムメニュー追加 */}
-        <div style={{marginBottom:16}}>
-          {!addingCustom ? (
-            <button onClick={() => setAddingCustom(true)} style={{width:'100%',padding:'9px',background:'none',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',fontSize:13,color:'var(--text3)',cursor:'pointer',fontFamily:'var(--font)'}}>
-              ＋ リストにないメニューを追加
-            </button>
-          ) : (
-            <div style={{background:'var(--surface2)',borderRadius:'var(--rs)',padding:12}}>
-              <div style={{fontSize:11,color:'var(--text3)',marginBottom:8,fontWeight:500}}>新しいメニューを登録（次回から候補に出ます）</div>
-              <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="料理名 *" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:6}}/>
-              <input value={customIngs} onChange={e => setCustomIngs(e.target.value)} placeholder="食材（カンマ区切り）" style={{width:'100%',padding:'8px 11px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,outline:'none',marginBottom:8}}/>
-              <div style={{display:'flex',gap:6}}>
-                <button onClick={() => { setAddingCustom(false); setCustomName(''); setCustomIngs('') }} style={{flex:1,padding:'8px',background:'var(--surface)',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'var(--text2)',fontFamily:'var(--font)'}}>キャンセル</button>
-                <button onClick={saveCustom} style={{flex:1,padding:'8px',background:'var(--green)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',color:'#fff',fontWeight:500,fontFamily:'var(--font)'}}>登録して追加</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 履歴 */}
-        {filteredHist.length > 0 && (
-          <div>
-            <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:8}}>履歴</div>
-            {filteredHist.map((m, i) => (
-              <div key={i} style={{display:'flex',alignItems:'center',borderBottom:'.5px solid var(--border)'}}>
-                <button onClick={() => { handleAdd({name:m.name,ings:m.ings||[]}); addHistory(m); setHistList(getHistory()) }}
-                  style={{flex:1,textAlign:'left',padding:'10px 6px',background:'none',border:'none',cursor:'pointer',fontFamily:'var(--font)',fontSize:13,touchAction:'manipulation'}}>
-                  {m.name}
-                </button>
-                <button onClick={e => deleteHist(m.name, e)}
-                  style={{fontSize:11,color:'var(--text3)',padding:'3px 7px',borderRadius:'var(--rs)',border:'.5px solid var(--border)',background:'none',cursor:'pointer',marginRight:6,fontFamily:'var(--font)'}}>
-                  削除
-                </button>
-                <span style={{fontSize:18,color:'var(--green)',fontWeight:300,padding:'0 4px'}}>＋</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* フッター */}
-      <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'10px 14px',paddingBottom:'calc(10px + env(safe-area-inset-bottom))',background:'var(--surface)',borderTop:'.5px solid var(--border)'}}>
-        <button onClick={handleDone} style={{
-          width:'100%',padding:'13px',border:'none',borderRadius:'var(--rs)',fontSize:14,fontWeight:600,cursor:'pointer',transition:'background .2s',fontFamily:'var(--font)',
-          background: doneAnim ? '#52B788' : 'var(--green)', color:'#fff',
-        }}>
-          {doneAnim
-            ? `✓ ${confirmed.map(m => m.name).join('・')} を登録しました`
-            : confirmed.length > 0 ? `${confirmed.map(m => m.name).join('・')} で確定` : '閉じる'
-          }
-        </button>
-      </div>
-    </div>
-  )
-}
-
-
-// ════════════════════════════════════════════
-// 一覧ページ
-// ════════════════════════════════════════════
-// 一覧用：料理チップ（カロリー＋担当者表示付き）
-function MealChipWithCal({ meal, onClick, onRemove, members }) {
-  const cal = getCachedCalories(meal.name)
-  const forLabel = meal.for === 'both' || !meal.for
-    ? null
-    : meal.for === 'member0' ? (members?.[0] || '自分')
-    : (members?.[1] || '相手')
-  return (
-    <div style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',background:'var(--green-l)',borderRadius:'var(--rs)',cursor:'pointer'}}
-      onClick={onClick}>
-      <span style={{flex:1,fontSize:13,fontWeight:500,color:'var(--green)'}}>🍽 {meal.name}</span>
-      {forLabel && <span style={{fontSize:10,background:'rgba(45,106,79,.15)',color:'var(--green)',borderRadius:10,padding:'1px 7px',flexShrink:0}}>{forLabel}</span>}
-      {cal !== null && <span style={{fontSize:10,color:'var(--green)',opacity:.7,flexShrink:0}}>{cal}kcal</span>}
-      <span onClick={onRemove} style={{fontSize:15,color:'var(--text3)',lineHeight:1,padding:'0 2px',cursor:'pointer',flexShrink:0}}>×</span>
-    </div>
-  )
-}
-
-export default function MealPlan({ data, onUpdate, onAddToList, staples, members }) {
-  const [weekOffset, setWeekOffset] = useState(0)
-  const dates = getDisplayDates(weekOffset)
-  const meals     = data?.meals     || {}
-  // Myセット：Firebase保存 or localStorageフォールバック
-  const mySets    = (data?.mySets && data.mySets.length > 0)
-    ? data.mySets
-    : getMySetsLocal().length > 0 ? getMySetsLocal() : DEFAULT_MYSETS
-
-  const rowRefs   = useRef([])
-
-  const [inputTarget, setInputTarget] = useState(null)
-
-  useEffect(() => {
-    const el = rowRefs.current[TODAY_IDX]
-    if (el) setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'start'}),100)
-  }, [])
-
-  const getList = (key) => { const v=meals[key]; return Array.isArray(v)?v:v?[v]:[] }
-
-  // mealsをrefで持つ（複数品連続追加でも古い値を参照しない）
-  const mealsRef = useRef(meals)
-  useEffect(() => { mealsRef.current = meals }, [meals])
-
-  const addMeal = (key, meal) => {
-    const excluded   = getExcludedIngs(meal.name)
-    const baseIngs   = resolveIngs(meal.name, meal.ings || [])
-    const addIngs    = baseIngs.filter(ing => !excluded.includes(ing))
-    if (addIngs.length > 0) onAddToList(addIngs, meal.name)
-    const mealToSave = { ...meal, ings: baseIngs }
-    // mealsRefから最新を取得して上書きを防ぐ
-    const currentMeals = mealsRef.current
-    const updated = { ...currentMeals, [key]: [...(Array.isArray(currentMeals[key]) ? currentMeals[key] : currentMeals[key] ? [currentMeals[key]] : []), mealToSave] }
-    mealsRef.current = updated
-    onUpdate({ meals: updated })
-  }
-  const removeMeal = (key, idx) => {
-    const list = getList(key).filter((_,i)=>i!==idx)
-    const next = {...meals}
-    if (list.length===0) delete next[key]; else next[key]=list
-    onUpdate({meals:next})
-  }
-
-  return (
-    <>
-      <div style={{paddingBottom:80}}>
-        <div style={{display:'flex',flexDirection:'column'}}>
-          {dates.map((date,di) => {
-            const today   = isToday(date)
-            const past    = di < TODAY_IDX
-            const dateStr = `${date.getMonth()+1}/${date.getDate()}`
-            const dayFull = DAY_FULL[date.getDay()]
-
-            return (
-              <div key={di} style={{display:'flex',alignItems:'stretch',borderBottom:'.5px solid var(--border)',opacity:past?.6:1}} ref={el=>rowRefs.current[di]=el}>
-                {/* 日付ラベル */}
-                <div style={{width:52,flexShrink:0,padding:'12px 6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start',gap:2,background:today?'var(--green)':'var(--surface2)',borderRight:'.5px solid var(--border)'}}>
-                  <span style={{fontSize:11,fontWeight:600,color:today?'#fff':'var(--text3)'}}>{DAY_SHORT[date.getDay()]}</span>
-                  <span style={{fontSize:13,fontWeight:today?700:400,color:today?'#fff':'var(--text)'}}>{dateStr}</span>
-                </div>
-
-                {/* 朝昼夜 */}
-                <div style={{flex:1,padding:'10px 12px',display:'flex',flexDirection:'column',gap:6}}>
-                  {MEALS.map(meal => {
-                    const key  = slotKey(date, meal)
-                    const list = getList(key)
-                    return (
-                      <div key={meal} style={{display:'flex',alignItems:'flex-start',gap:7}}>
-                        <div style={{fontSize:10,color:'var(--text3)',width:22,flexShrink:0,paddingTop:9,fontWeight:600}}>{meal}</div>
-                        <div style={{flex:1,minWidth:0}}>
-                          {list.length>0 && (
-                            <div style={{display:'flex',flexDirection:'column',gap:3,marginBottom:3}}>
-                              {list.map((m,i)=>(
-                                <div key={i} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 10px',background:'var(--green-l)',borderRadius:'var(--rs)',cursor:'pointer'}}
-                                  onClick={()=>setInputTarget({key,dayLabel:dayFull,mealLabel:meal})}>
-                                  <span style={{flex:1,fontSize:13,fontWeight:500,color:'var(--green)'}}>🍽 {m.name}</span>
-                                  <span onClick={e=>{e.stopPropagation();removeMeal(key,i)}} style={{fontSize:15,color:'var(--text3)',lineHeight:1,padding:'0 2px',cursor:'pointer'}}>×</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <button onClick={()=>setInputTarget({key,dayLabel:dayFull,mealLabel:meal})}
-                            style={{padding:list.length>0?'4px 10px':'7px 10px',fontSize:12,color:'var(--text3)',border:'.5px dashed var(--border2)',borderRadius:'var(--rs)',cursor:'pointer',background:'none',width:'100%',textAlign:'left'}}>
-                            ＋ {list.length>0?'もう一品':'料理を追加'}
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {inputTarget && (
-        <InputPage
-          dayLabel={inputTarget.dayLabel}
-          mealLabel={inputTarget.mealLabel}
-          confirmed={getList(inputTarget.key)}
-          mySets={mySets}
-          staples={staples}
-          members={members || ['自分','相手']}
-          onAdd={meal=>addMeal(inputTarget.key,meal)}
-          onRemove={idx=>removeMeal(inputTarget.key,idx)}
-          onDone={()=>setInputTarget(null)}
+      {/* 追加フォーム */}
+      <div style={s.addRow}>
+        <input
+          style={s.addInp}
+          value={newItem}
+          onChange={e => setNewItem(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addItem(newItem)}
+          placeholder="アイテムを追加（Enterで確定）"
         />
+        <button style={s.addBtn} onClick={() => addItem(newItem)}>追加</button>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={s.empty}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🛒</div>
+          <div style={{ fontSize: 13 }}>献立タブで料理を選ぶと<br />食材が自動で追加されます</div>
+        </div>
+      ) : (
+        <>
+          {/* 進捗 */}
+          <div style={s.prog}>
+            <div style={s.progRow}><span>進捗</span><span>{checkedCount} / {items.length} 件</span></div>
+            <div style={s.progBg}><div style={s.progBar(pct)} /></div>
+          </div>
+
+          {/* ツール */}
+          <div style={s.toolRow}>
+            <span style={{ fontSize: 12, color: 'var(--text3)' }}>{items.length}件</span>
+            <button style={s.clearBtn} onClick={clearChecked}>チェック済みを削除</button>
+          </div>
+
+          {/* カテゴリ別リスト */}
+          {Object.entries(byCat).map(([cat, catItems]) => (
+            <div key={cat} style={s.catWrap}>
+              <div style={s.sec}>{cat}</div>
+              {catItems.map(item => (
+                <div
+                  key={item.id}
+                  style={s.item(item.checked)}
+                  onClick={() => toggle(item)}
+                  onMouseEnter={() => setHovered(item.id)}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  {/* チェックサークル */}
+                  <div style={s.circle(item.checked)}>
+                    {item.checked && CHECK_SVG}
+                  </div>
+
+                  {/* 名前・サブ情報 */}
+                  <div style={s.nameWrap}>
+                    <span style={s.name(item.checked)}>{item.name}</span>
+                    {item.mealNames?.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {item.mealNames.map(mn => (
+                          <span key={mn} style={s.mealBadge}>📅 {mn}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ×個バッジ */}
+                  {item.count > 1 && (
+                    <span style={s.countBadge}>×{item.count}</span>
+                  )}
+
+                  {/* 削除ボタン */}
+                  <span
+                    style={{ ...s.delBtn, opacity: hovered === item.id ? 1 : 0 }}
+                    onClick={e => { e.stopPropagation(); remove(item) }}
+                  >×</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </>
       )}
-    </>
+    </div>
   )
 }
