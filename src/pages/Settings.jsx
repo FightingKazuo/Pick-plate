@@ -3,6 +3,21 @@ import { checkRoom } from '../firebase'
 import { DEFAULT_STAPLES } from '../App'
 import { searchRecipes, fetchGeminiSuggestions } from '../recipes'
 
+// ── 確認ダイアログ ──
+function ConfirmDialog({ message, onOk, onCancel }) {
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:900,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div style={{background:'var(--surface)',borderRadius:'var(--r)',padding:20,width:'100%',maxWidth:320,boxShadow:'0 8px 32px rgba(0,0,0,.18)'}}>
+        <div style={{fontSize:14,color:'var(--text)',marginBottom:18,lineHeight:1.7}}>{message}</div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={onCancel} style={{flex:1,padding:'9px',background:'var(--surface2)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',fontFamily:'var(--font)',color:'var(--text2)'}}>キャンセル</button>
+          <button onClick={onOk}     style={{flex:1,padding:'9px',background:'var(--red-l)',border:'none',borderRadius:'var(--rs)',fontSize:13,cursor:'pointer',fontFamily:'var(--font)',color:'var(--red)',fontWeight:600}}>リセット</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════
 // メンバー名設定
 // ════════════════════════════════════════
@@ -185,16 +200,18 @@ function MySetManager({ data, onUpdate }) {
 // ════════════════════════════════════════
 function ExclusionManager() {
   const [exc, setExc] = useState(() => { try { return JSON.parse(localStorage.getItem('mealExclusions')||'{}') } catch { return {} } })
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const entries = Object.entries(exc).filter(([,ings])=>ings.length>0)
   const removeIng = (meal, ing) => {
     const next = {...exc, [meal]:exc[meal].filter(x=>x!==ing)}
     if (next[meal].length===0) delete next[meal]
     localStorage.setItem('mealExclusions', JSON.stringify(next)); setExc({...next})
   }
-  const clearAll = () => { if(!confirm('除外食材の記録をすべてリセットしますか？')) return; localStorage.setItem('mealExclusions','{}'); setExc({}) }
+  const clearAll = () => { localStorage.setItem('mealExclusions','{}'); setExc({}); setConfirmOpen(false) }
   if (entries.length===0) return <div style={{fontSize:12,color:'var(--text3)'}}>まだ記録はありません。献立で料理の食材をタップすると記録されます。</div>
   return (
     <div>
+      {confirmOpen && <ConfirmDialog message="除外食材の記録をすべてリセットしますか？" onOk={clearAll} onCancel={()=>setConfirmOpen(false)} />}
       {entries.map(([meal,ings])=>(
         <div key={meal} style={{marginBottom:10}}>
           <div style={{fontSize:12,fontWeight:500,marginBottom:5}}>🍽 {meal}</div>
@@ -207,7 +224,7 @@ function ExclusionManager() {
           </div>
         </div>
       ))}
-      <button onClick={clearAll} style={{fontSize:12,padding:'6px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',background:'none',cursor:'pointer',color:'var(--text2)',marginTop:4}}>すべてリセット</button>
+      <button onClick={()=>setConfirmOpen(true)} style={{fontSize:12,padding:'6px 12px',border:'.5px solid var(--border2)',borderRadius:'var(--rs)',background:'none',cursor:'pointer',color:'var(--text2)',marginTop:4}}>すべてリセット</button>
     </div>
   )
 }
@@ -236,18 +253,19 @@ const s = {
 function genCode() { return Math.random().toString(36).substring(2,8).toUpperCase() }
 
 export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
-  const [inputCode,   setInputCode]   = useState('')
-  const [geminiKey,   setGeminiKey]   = useState(localStorage.getItem('geminiKey')||'')
-  const [geminiSaved, setGeminiSaved] = useState(!!localStorage.getItem('geminiKey'))
-  const [joining,     setJoining]     = useState(false)
-  const [msg,         setMsg]         = useState('')
-  const [newStaple,   setNewStaple]   = useState('')
+  const [inputCode,       setInputCode]       = useState('')
+  const [geminiKey,       setGeminiKey]       = useState(localStorage.getItem('geminiKey')||'')
+  const [geminiSaved,     setGeminiSaved]     = useState(!!localStorage.getItem('geminiKey'))
+  const [joining,         setJoining]         = useState(false)
+  const [msg,             setMsg]             = useState('')
+  const [newStaple,       setNewStaple]       = useState('')
+  const [stapleConfirm,   setStapleConfirm]   = useState(false)
 
   const staples = data?.staples || DEFAULT_STAPLES
   const updateStaples = (next) => onUpdate({ staples: next })
   const addStaple     = () => { const v=newStaple.trim(); if(!v||staples.includes(v)) return; updateStaples([...staples,v]); setNewStaple('') }
   const removeStaple  = (s) => updateStaples(staples.filter(x=>x!==s))
-  const resetStaples  = () => { if(confirm('常備品リストをデフォルトに戻しますか？')) updateStaples(DEFAULT_STAPLES) }
+  const resetStaples  = () => updateStaples(DEFAULT_STAPLES)
 
   const createRoom = () => { const c=genCode(); onRoomChange(c); setMsg('ルームを作成しました！コードを彼女に送ってください。') }
   const joinRoom   = async () => {
@@ -285,7 +303,10 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
           <input style={s.addInp} value={newStaple} onChange={e=>setNewStaple(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addStaple()} placeholder="追加する常備品（例：バター）"/>
           <button style={s.addBtn} onClick={addStaple}>追加</button>
         </div>
-        <button style={{...s.btn('white'),marginTop:10,width:'100%',fontSize:12}} onClick={resetStaples}>デフォルトに戻す</button>
+        <>
+          {stapleConfirm && <ConfirmDialog message="常備品リストをデフォルトに戻しますか？" onOk={()=>{resetStaples();setStapleConfirm(false)}} onCancel={()=>setStapleConfirm(false)} />}
+          <button style={{...s.btn('white'),marginTop:10,width:'100%',fontSize:12}} onClick={()=>setStapleConfirm(true)}>デフォルトに戻す</button>
+        </>
       </div>
 
       {/* 除外食材 */}
