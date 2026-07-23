@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { saveRoom, subscribeRoom } from './firebase'
 import MealPlan from './pages/MealPlan'
-import ShoppingList, { guessCategory, normalizeIngredient } from './pages/ShoppingList'
+import ShoppingList, { guessCategory } from './pages/ShoppingList'
 import Settings from './pages/Settings'
 import Nutrition from './pages/Nutrition'
 
@@ -115,6 +115,25 @@ export default function App() {
     firebaseKeyRef.current = code // refも更新
     setRoomCode(code)
   }, [])
+
+  // 表記ゆれ正規化（ShoppingList.jsxと同じロジック）
+  const normalizeIngredient = (name) => {
+    const MAP = {
+      'ネギ':'長ねぎ','ねぎ':'長ねぎ','葱':'長ねぎ','長ネギ':'長ねぎ','青ねぎ':'長ねぎ','青ネギ':'長ねぎ',
+      'ニンニク':'にんにく','大蒜':'にんにく','ショウガ':'生姜','しょうが':'生姜',
+      '玉葱':'玉ねぎ','タマネギ':'玉ねぎ','たまねぎ':'玉ねぎ',
+      '人参':'にんじん','ニンジン':'にんじん','ジャガイモ':'じゃがいも','ポテト':'じゃがいも',
+      'ナス':'なす','ニラ':'にら','きゃべつ':'キャベツ',
+      '木綿豆腐':'豆腐','絹豆腐':'豆腐','絹ごし豆腐':'豆腐',
+      'たまご':'卵','タマゴ':'卵','玉子':'卵',
+      '鶏モモ肉':'鶏もも肉','チキン':'鶏もも肉','豚肉':'豚バラ',
+      'しょうゆ':'醤油','食塩':'塩','胡椒':'こしょう','コショウ':'こしょう',
+      'ゴマ油':'ごま油','植物油':'サラダ油','オリーブオイル':'オリーブ油',
+      '料理酒':'酒','上白糖':'砂糖','白米':'ごはん','スパゲッティ':'パスタ',
+    }
+    const t = (name||'').trim()
+    return MAP[t] || t
+  }
 
   // 常備品チェック（2文字以上の常備品が食材名に含まれる場合のみ除外）
   const staples = data?.staples || DEFAULT_STAPLES
