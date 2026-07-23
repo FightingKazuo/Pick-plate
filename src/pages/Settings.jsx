@@ -353,3 +353,4 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
     </div>
   )
 }
+
