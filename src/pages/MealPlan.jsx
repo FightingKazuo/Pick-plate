@@ -37,11 +37,14 @@ export const DEFAULT_TEMPLATES = DEFAULT_MYSETS
 export function getTemplatesForMeal() { return [] }
 
 // ── 日付 ──
-function getDisplayDates() {
+function getDisplayDates(weekOffset = 0) {
   const today = new Date()
   const base  = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  // weekOffset: 0=今週, -1=先週, -2=先々週...
   return Array.from({length:7}, (_,i) => {
-    const d = new Date(base); d.setDate(base.getDate() + i - 2); return d
+    const d = new Date(base)
+    d.setDate(base.getDate() + i - 2 + weekOffset * 7)
+    return d
   })
 }
 function slotKey(date, meal) {
@@ -572,7 +575,8 @@ function MealChipWithCal({ meal, onClick, onRemove, members }) {
 }
 
 export default function MealPlan({ data, onUpdate, onAddToList, staples, members }) {
-  const dates     = getDisplayDates()
+  const [weekOffset, setWeekOffset] = useState(0)
+  const dates = getDisplayDates(weekOffset)
   const meals     = data?.meals     || {}
   // Myセット：Firebase保存 or localStorageフォールバック
   const mySets    = (data?.mySets && data.mySets.length > 0)
