@@ -151,11 +151,13 @@ async function fetchNutrition(mealName, ings, apiKey) {
   // Gemini呼び出し条件：
   // ① APIキーあり
   // ② DBカバレッジが80%未満、またはDBカロリーが50kcal未満（明らかに過小）、または食材なし
+  // Geminiを基本的に常に呼ぶ（DBは補助として使う）
+  // 例外：APIキーなし、またはDBで完全カバーかつカロリー十分な場合のみスキップ
   const needsGemini = apiKey && (
     !dbResult ||
-    coverage < 0.8 ||
-    dbResult.calories < 50 ||
-    (ings || []).length === 0
+    dbResult.calories < 100 ||   // 100kcal未満は再推定
+    coverage < 0.9 ||             // DBカバレッジ90%未満
+    (ings || []).length === 0     // 食材リストなし（料理名のみ）
   )
 
   if (needsGemini) {
@@ -480,22 +482,38 @@ function WeekView({ dates, meals, apiKey, person }) {
   const [advErr,     setAdvErr]     = useState('')
 
   useEffect(() => {
-    const allNames = new Set()
+    // まずキャッシュ済みを即反映、API呼び出しは順次（同時実行数を制限）
+    const allItems = []
     dates.forEach(date => {
-      [...MEALS,'間食'].forEach(meal => {
+      ;[...MEALS,'間食'].forEach(meal => {
         const v = meals[slotKey(date,meal)]
-        ;(Array.isArray(v)?v:v?[v]:[]).forEach(m=>allNames.add(JSON.stringify({name:m.name,ings:m.ings})))
+        ;(Array.isArray(v)?v:v?[v]:[]).forEach(m => {
+          if (!allItems.find(x=>x.name===m.name)) allItems.push({name:m.name,ings:m.ings})
+        })
       })
     })
-    allNames.forEach(str => {
-      const {name,ings} = JSON.parse(str)
-      if (nutritions[name]!==undefined) return
-      const cached = getCachedNutr(name)
-      if (cached) { setNutritions(p=>({...p,[name]:cached})); return }
-      if (!apiKey) return
-      fetchNutrition(name, ings, apiKey).then(d=>{ if(d) setNutritions(p=>({...p,[name]:d})) })
+    // キャッシュを即反映
+    const cached = {}
+    allItems.forEach(({name,ings}) => {
+      const c = getCachedNutr(name)
+      if (c) cached[name] = c
     })
-  }, [apiKey])
+    if (Object.keys(cached).length > 0) setNutritions(p=>({...p,...cached}))
+    // APIが必要なものを順次取得（並列制限3）
+    if (!apiKey) return
+    const needFetch = allItems.filter(({name}) => !cached[name])
+    let idx = 0
+    const CONCURRENCY = 3
+    const fetchNext = () => {
+      if (idx >= needFetch.length) return
+      const {name, ings} = needFetch[idx++]
+      fetchNutrition(name, ings, apiKey).then(d => {
+        if (d) setNutritions(p=>({...p,[name]:d}))
+        fetchNext()
+      })
+    }
+    for (let i = 0; i < Math.min(CONCURRENCY, needFetch.length); i++) fetchNext()
+  }, [apiKey, dates.map(d=>d.toDateString()).join()])
 
   const dayTotals = dates.map(date => {
     const ms = [...MEALS,'間食'].flatMap(meal=>{
