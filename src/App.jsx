@@ -178,6 +178,22 @@ export default function App() {
     return () => window.removeEventListener('pickplate:addMeal', handler)
   }, [handleUpdate, addToList])
 
+  // 栄養タブからの食事削除
+  useEffect(() => {
+    const handler = (e) => {
+      const { key, meals: updatedList } = e.detail
+      const currentMeals = { ...dataRef.current.meals }
+      if (!updatedList || updatedList.length === 0) {
+        delete currentMeals[key]
+      } else {
+        currentMeals[key] = updatedList
+      }
+      handleUpdate({ meals: currentMeals })
+    }
+    window.addEventListener('pickplate:removeMeal', handler)
+    return () => window.removeEventListener('pickplate:removeMeal', handler)
+  }, [handleUpdate])
+
   return (
     <div style={css.app}>
       <div style={css.header}>
