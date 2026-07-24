@@ -32,8 +32,9 @@ function MemberSettings({ data, onUpdate }) {
   }
   return (
     <div>
-      <div style={{fontSize:11,color:'var(--text3)',marginBottom:10,lineHeight:1.7}}>
-        料理ごとに「誰用か」を指定できます。栄養素も個人別に計算されます。
+      <div style={{fontSize:12,color:'var(--text2)',marginBottom:12,lineHeight:1.7,padding:'9px 11px',background:'var(--green-l)',borderRadius:'var(--rs)',border:'.5px solid rgba(45,106,79,.2)'}}>
+        📋 ここで名前を設定すると、献立で料理を追加するときに「誰用か」を指定できます。<br/>
+        栄養タブで「{name0 || '自分'}」「{name1 || '相手'}」ボタンが使えるようになります。
       </div>
       <div style={{display:'flex',gap:8,marginBottom:8}}>
         {[{label:'メンバー1',val:name0,set:setName0,ph:'例：かずお'},{label:'メンバー2',val:name1,set:setName1,ph:'例：彼女'}].map(({label,val,set,ph})=>(
@@ -353,4 +354,3 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
     </div>
   )
 }
-
