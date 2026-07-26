@@ -574,8 +574,14 @@ function MealChipWithCal({ meal, onClick, onRemove, members }) {
   )
 }
 
-export default function MealPlan({ data, onUpdate, onAddToList, staples, members }) {
-  const [weekOffset, setWeekOffset] = useState(0)
+export default function MealPlan({ data, onUpdate, onAddToList, staples, members, weekOffset: weekOffsetProp, onWeekOffsetChange }) {
+  const [localWeekOffset, setLocalWeekOffset] = useState(weekOffsetProp || 0)
+  const weekOffset = weekOffsetProp !== undefined ? weekOffsetProp : localWeekOffset
+  const setWeekOffset = (fn) => {
+    const next = typeof fn === 'function' ? fn(weekOffset) : fn
+    setLocalWeekOffset(next)
+    onWeekOffsetChange?.(next)
+  }
   const dates = getDisplayDates(weekOffset)
   const meals     = data?.meals     || {}
   // Myセット：Firebase保存 or localStorageフォールバック
