@@ -276,7 +276,9 @@ function QuickAddModal({ date, mealSlot, onAdd, onClose, apiKey }) {
   const [query,      setQuery]      = useState('')
   const [results,    setResults]    = useState([])
   const [aiLoad,     setAiLoad]     = useState(false)
-  const [category,   setCategory]   = useState(mealSlot)
+  const [category,   setCategory]   = useState(mealSlot || '朝')
+  // mealSlotが変わったらcategoryも更新（モーダルを再利用するケースへの対応）
+  useEffect(() => { if (mealSlot) setCategory(mealSlot) }, [mealSlot])
   const [customName, setCustomName] = useState('')
   const [focused,    setFocused]    = useState(false)
   const isComposing = useRef(false)
