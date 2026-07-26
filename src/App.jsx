@@ -63,6 +63,7 @@ function getOrCreateDeviceId() {
 
 export default function App() {
   const [tab,      setTab]      = useState('meal')
+  const [weekOffset, setWeekOffset] = useState(0)  // 献立・栄養で共有
   const [roomCode, setRoomCode] = useState(() => localStorage.getItem(LS_ROOM) || '')
   const [data,     setData]     = useState(() => loadBackup())
   const [syncing,  setSyncing]  = useState(false)
@@ -212,7 +213,7 @@ export default function App() {
       <div style={css.content}>
         {tab === 'meal'     && <MealPlan data={data} onUpdate={handleUpdate} onAddToList={addToList} staples={staples} members={data?.members || ['自分','相手']} />}
         {tab === 'list'     && <ShoppingList data={data} onUpdate={handleUpdate} />}
-        {tab === 'nutrition' && <Nutrition data={data} members={data?.members || ['自分','相手']} />}
+        {tab === 'nutrition' && <Nutrition data={data} members={data?.members || ['自分','相手']} weekOffset={weekOffset} onWeekOffsetChange={setWeekOffset} />}
         {tab === 'settings' && <Settings data={data} onUpdate={handleUpdate} roomCode={roomCode} onRoomChange={handleRoomChange} />}
       </div>
 
