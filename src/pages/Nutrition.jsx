@@ -165,10 +165,11 @@ async function fetchNutrition(mealName, ings, apiKey) {
       ? `食材リスト：${ings.join('、')}`
       : `料理名のみ：${mealName}`
     const text = await callGemini(
-      `「${mealName}」を一人前食べた場合の栄養素を推定してください。${ingDesc}。
-JSONのみ返答（説明・コードブロック不要）：
+      `「${mealName}」を一人前食べた場合の栄養素を日本食品成分表を参考に推定してください。${ingDesc}。
+以下のJSON形式のみで返答してください（説明文・コードブロック・改行不要）：
 {"calories":数値,"protein":数値,"fat":数値,"carbs":数値,"fiber":数値,"salt":数値,"vitaminC":数値,"iron":数値,"calcium":数値,"vitaminA":数値}
-calories=kcal、protein/fat/carbs/fiber/salt=g、vitaminC/iron=mg、calcium=mg、vitaminA=μg。0は使わず必ず推定値を入れること。`, apiKey)
+単位: calories=kcal, protein/fat/carbs/fiber/salt/iron=g→いや iron=mg, calcium=mg, vitaminC=mg, vitaminA=μg
+重要: 全ての値を必ず推定してください。0にしないこと。未知の場合も類似食品から推定すること。`, apiKey)
     try {
       const clean = text.replace(/\`\`\`json|\`\`\`/g,'').trim()
       const parsed = JSON.parse(clean)
@@ -228,19 +229,23 @@ async function fetchWeeklyAdvice(summary, apiKey) {
 
 // ── UI部品 ──
 function NutrBar({ label, value, unit, max }) {
-  const pct = max ? Math.min((value/max)*100, 100) : 0
-  const over = value > max
+  const hasValue = value !== null && value !== undefined && value > 0
+  const pct = (hasValue && max) ? Math.min((value/max)*100, 100) : 0
+  const over = hasValue && value > max
+  const color = NUTR_LABELS.find(n=>n.label===label)?.color || 'var(--green)'
   return (
     <div style={{marginBottom:7}}>
       <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:2}}>
         <span style={{color:'var(--text2)'}}>{label}</span>
-        <span style={{color:over?'#E53E3E':'var(--text)',fontWeight:500}}>
-          {value?.toFixed(1)??'—'}<span style={{fontSize:9,color:'var(--text3)',marginLeft:2}}>{unit}</span>
-          {over&&<span style={{fontSize:9,color:'#E53E3E',marginLeft:3}}>↑超過</span>}
+        <span style={{color:over?'#E53E3E':hasValue?'var(--text)':'var(--text3)',fontWeight:hasValue?500:400}}>
+          {hasValue ? (
+            <>{value.toFixed(1)}<span style={{fontSize:9,color:'var(--text3)',marginLeft:2}}>{unit}</span>
+            {over&&<span style={{fontSize:9,color:'#E53E3E',marginLeft:3}}>↑超過</span>}</>
+          ) : <span style={{fontSize:11}}>—</span>}
         </span>
       </div>
       <div style={{background:'var(--border)',borderRadius:4,height:5,overflow:'hidden'}}>
-        <div style={{width:`${pct}%`,height:'100%',background:over?'#FC8181':NUTR_LABELS.find(n=>n.unit===unit||n.label===label)?.color||'var(--green)',borderRadius:4,transition:'width .5s'}}/>
+        <div style={{width:`${pct}%`,height:'100%',background:over?'#FC8181':color,borderRadius:4,transition:'width .5s'}}/>
       </div>
     </div>
   )
@@ -254,7 +259,7 @@ function SummaryGrid({ totals }) {
         return (
           <div key={key} style={{textAlign:'center',padding:'8px 4px',background:'var(--surface)',borderRadius:'var(--rs)',border:`.5px solid ${over?'#FC8181':'var(--border)'}`}}>
             <div style={{fontSize:9,color:'var(--text3)',marginBottom:2}}>{label}</div>
-            <div style={{fontSize:15,fontWeight:700,color:over?'#E53E3E':'var(--text)',lineHeight:1.2}}>{val.toFixed(0)}</div>
+            <div style={{fontSize:15,fontWeight:700,color:over?'#E53E3E':val>0?'var(--text)':'var(--text3)',lineHeight:1.2}}>{val>0?val.toFixed(0):'—'}</div>
             <div style={{fontSize:9,color:'var(--text3)'}}>{unit}</div>
             <div style={{background:'var(--border)',borderRadius:3,height:3,marginTop:4,overflow:'hidden'}}>
               <div style={{width:`${Math.min((val/max)*100,100)}%`,height:'100%',background:over?'#FC8181':color,borderRadius:3}}/>
@@ -296,7 +301,7 @@ function QuickAddModal({ date, mealSlot, onAdd, onClose, apiKey }) {
     return () => clearTimeout(timer.current)
   }, [query])
 
-  const pick = (r) => { onAdd({name:r.name, ings:r.ings||[], meal:category}); onClose() }
+  const pick = (r) => { onAdd({name: r.name||r, ings:r.ings||[], meal:category}); onClose() }
   const addCustom = () => { const n=(customName||query).trim(); if(n){onAdd({name:n,ings:[],meal:category});onClose()} }
 
   return (
@@ -323,6 +328,21 @@ function QuickAddModal({ date, mealSlot, onAdd, onClose, apiKey }) {
               ))}
             </div>
           </div>
+          {/* よく使う */}
+          {recentMeals.length > 0 && !query && (
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:7}}>最近よく食べたもの</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                {recentMeals.map(name => (
+                  <button key={name} onClick={()=>pick({name, ings:[]})} style={{
+                    padding:'5px 11px',borderRadius:20,border:'.5px solid var(--border2)',background:'var(--surface)',
+                    fontSize:12,color:'var(--text2)',cursor:'pointer',fontFamily:'var(--font)',touchAction:'manipulation',
+                  }}>{name}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 検索 */}
           <div style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text3)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:7}}>料理を検索</div>
@@ -598,13 +618,19 @@ function WeekView({ dates, meals, apiKey, person }) {
 }
 
 // ── メイン ──
-export default function Nutrition({ data, members, onUpdate }) {
+export default function Nutrition({ data, members, onUpdate, weekOffset: weekOffsetProp, onWeekOffsetChange }) {
   const [view,      setView]      = useState('day')
   const [activeDay, setActiveDay] = useState(2)
   const [person,    setPerson]    = useState('both')
   const [quickAdd,  setQuickAdd]  = useState(null)
-  const [weekOffset, setWeekOffset] = useState(0)
-  const dates  = getDisplayDates(weekOffset)
+  const [localWeekOffset, setLocalWeekOffset] = useState(weekOffsetProp || 0)
+  const weekOffset = weekOffsetProp !== undefined ? weekOffsetProp : localWeekOffset
+  const setWeekOffset = (fn) => {
+    const next = typeof fn === 'function' ? fn(weekOffset) : fn
+    setLocalWeekOffset(next)
+    onWeekOffsetChange?.(next)
+  }
+  const dates = getDisplayDates(weekOffset)
   const meals  = data?.meals || {}
   const apiKey = localStorage.getItem('geminiKey') || ''
   const m0 = members?.[0] || '自分'
@@ -619,7 +645,9 @@ export default function Nutrition({ data, members, onUpdate }) {
   }
 
   const handleQuickAdd = (meal) => {
-    const { date, meal: mealTime } = quickAdd
+    const { date } = quickAdd
+    // meal.mealはモーダル内でユーザーが選択した食事区分（朝/昼/夜/間食）
+    const mealTime = meal.meal || quickAdd.meal
     const key = slotKey(date, mealTime)
     window.dispatchEvent(new CustomEvent('pickplate:addMeal', { detail: { key, meal: { ...meal, meal: mealTime } } }))
     setQuickAdd(null)
@@ -687,6 +715,7 @@ export default function Nutrition({ data, members, onUpdate }) {
           date={quickAdd.date}
           mealSlot={quickAdd.meal}
           apiKey={apiKey}
+          allMeals={meals}
           onAdd={handleQuickAdd}
           onClose={()=>setQuickAdd(null)}
         />
