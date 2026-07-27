@@ -257,7 +257,6 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   const [inputCode,       setInputCode]       = useState('')
   const [geminiKey,       setGeminiKey]       = useState(localStorage.getItem('geminiKey')||'')
   const [geminiSaved,     setGeminiSaved]     = useState(!!localStorage.getItem('geminiKey'))
-  const [joining,         setJoining]         = useState(false)
   const [msg,             setMsg]             = useState('')
   const [newStaple,       setNewStaple]       = useState('')
   const [stapleConfirm,   setStapleConfirm]   = useState(false)
@@ -269,32 +268,13 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   const resetStaples  = () => updateStaples(DEFAULT_STAPLES)
 
   const createRoom = () => { const c=genCode(); onRoomChange(c); setMsg('ルームを作成しました！コードを彼女に送ってください。') }
-  const joinRoom   = async () => {
-    const code=inputCode.trim().toUpperCase()
-    if(code.length<4){setMsg('コードを入力してください');return}
-    setJoining(true)
-    setMsg('')
-    try {
-      // タイムアウト10秒
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
-      const exists = await Promise.race([checkRoom(code), timeout])
-      if(exists){
-        onRoomChange(code)
-        setMsg(`ルーム「${code}」に参加しました！`)
-      } else {
-        // ルームが存在しない場合でも参加できるように（新規作成扱い）
-        onRoomChange(code)
-        setMsg(`ルーム「${code}」に参加しました！データは同期されます。`)
-      }
-    } catch(e) {
-      if(e.message === 'timeout') {
-        setMsg('接続がタイムアウトしました。ネットワークを確認してください。')
-      } else {
-        setMsg(`エラーが発生しました: ${e.message}`)
-      }
-    } finally {
-      setJoining(false)
-    }
+  const joinRoom = () => {
+    const code = inputCode.trim().toUpperCase()
+    if (code.length < 4) { setMsg('コードを入力してください'); return }
+    // Firebase確認をせず直接参加（接続エラーで止まらないように）
+    onRoomChange(code)
+    setMsg(`ルーム「${code}」に参加しました！`)
+    setInputCode('')
   }
   const saveGemini = () => { localStorage.setItem('geminiKey',geminiKey); setGeminiSaved(true); setMsg('Gemini APIキーを保存しました') }
 
@@ -354,7 +334,7 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
             <button style={{...s.btn('green'),width:'100%',marginBottom:10}} onClick={createRoom}>＋ 新しいルームを作る</button>
             <div style={{...s.hint,marginBottom:8}}>または受け取ったコードで参加</div>
             <input style={s.inp} value={inputCode} onChange={e=>setInputCode(e.target.value.toUpperCase())} placeholder="ルームコードを入力" maxLength={8}/>
-            <button style={{...s.btn('green'),width:'100%'}} onClick={joinRoom} disabled={joining}>{joining?'確認中...':'ルームに参加'}</button>
+            <button style={{...s.btn('green'),width:'100%'}} onClick={joinRoom} touchAction='manipulation'>ルームに参加</button>
           </>
         )}
       </div>
