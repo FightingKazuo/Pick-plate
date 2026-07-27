@@ -76,6 +76,10 @@ export default function App() {
   }
   const firebaseKey = roomCode || firebaseKeyRef.current
 
+  // dataRefは常に最新のdataを指す（連続更新・Firebase受信時のstale closure対策）
+  const dataRef = useRef(data)
+  useEffect(() => { dataRef.current = data }, [data])
+
   useEffect(() => {
     const on = () => setIsOnline(true)
     const off = () => setIsOnline(false)
@@ -89,15 +93,12 @@ export default function App() {
     const unsub = subscribeRoom(firebaseKey, (remoteData) => {
       if (!remoteData) return
       const merged = { ...INITIAL_DATA, ...remoteData, staples: remoteData.staples || DEFAULT_STAPLES }
+      dataRef.current = merged  // ★ refも即座に更新（相手の変更を確実に反映）
       setData(merged)
       saveBackup(merged)
     })
     return () => unsub()
   }, [firebaseKey])
-
-  // dataRefは常に最新のdataを指す（連続更新時のstale closure対策）
-  const dataRef = useRef(data)
-  useEffect(() => { dataRef.current = data }, [data])
 
   const handleUpdate = useCallback(async (patch) => {
     // dataRefから最新を取得（複数の連続更新でも古いstateを参照しない）
@@ -227,4 +228,3 @@ export default function App() {
     </div>
   )
 }
-
