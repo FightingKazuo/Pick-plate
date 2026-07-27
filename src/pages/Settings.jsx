@@ -259,6 +259,7 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
   const [geminiSaved,     setGeminiSaved]     = useState(!!localStorage.getItem('geminiKey'))
   const [msg,             setMsg]             = useState('')
   const [newStaple,       setNewStaple]       = useState('')
+  const [switchOpen,      setSwitchOpen]      = useState(false)
   const [stapleConfirm,   setStapleConfirm]   = useState(false)
 
   const staples = data?.staples || DEFAULT_STAPLES
@@ -327,6 +328,22 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
             <div style={s.roomCode}>{roomCode}</div>
             <div style={s.hint}>このコードを彼女に送って「ルームに参加」から入力してもらうとリアルタイム同期されます。</div>
             <button style={{...s.btn('white'),marginTop:10,width:'100%'}} onClick={createRoom}>新しいルームを作る</button>
+
+            {/* 別のルームコードに切り替え */}
+            {!switchOpen ? (
+              <button style={{...s.btn('white'),marginTop:8,width:'100%',fontSize:12,color:'var(--text3)'}} onClick={()=>setSwitchOpen(true)}>
+                別のルームコードに参加する
+              </button>
+            ) : (
+              <div style={{marginTop:10,paddingTop:10,borderTop:'.5px solid var(--border)'}}>
+                <label style={s.label}>別のルームコードを入力</label>
+                <input style={s.inp} value={inputCode} onChange={e=>setInputCode(e.target.value.toUpperCase())} placeholder="例：4M867H" maxLength={8}/>
+                <div style={s.row}>
+                  <button style={s.btn('white')} onClick={()=>{setSwitchOpen(false);setInputCode('')}}>キャンセル</button>
+                  <button style={s.btn('green')} onClick={()=>{joinRoom();setSwitchOpen(false)}}>切り替える</button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>
