@@ -310,3 +310,4 @@ export default function ShoppingList({ data, onUpdate }) {
     </div>
   )
 }
+
