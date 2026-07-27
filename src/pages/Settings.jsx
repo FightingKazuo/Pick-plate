@@ -270,10 +270,31 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
 
   const createRoom = () => { const c=genCode(); onRoomChange(c); setMsg('ルームを作成しました！コードを彼女に送ってください。') }
   const joinRoom   = async () => {
-    const code=inputCode.trim().toUpperCase(); if(code.length<4){setMsg('コードを入力してください');return}
+    const code=inputCode.trim().toUpperCase()
+    if(code.length<4){setMsg('コードを入力してください');return}
     setJoining(true)
-    const exists=await checkRoom(code); setJoining(false)
-    if(exists){onRoomChange(code);setMsg(`ルーム「${code}」に参加しました！`)} else setMsg('ルームが見つかりませんでした。')
+    setMsg('')
+    try {
+      // タイムアウト10秒
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+      const exists = await Promise.race([checkRoom(code), timeout])
+      if(exists){
+        onRoomChange(code)
+        setMsg(`ルーム「${code}」に参加しました！`)
+      } else {
+        // ルームが存在しない場合でも参加できるように（新規作成扱い）
+        onRoomChange(code)
+        setMsg(`ルーム「${code}」に参加しました！データは同期されます。`)
+      }
+    } catch(e) {
+      if(e.message === 'timeout') {
+        setMsg('接続がタイムアウトしました。ネットワークを確認してください。')
+      } else {
+        setMsg(`エラーが発生しました: ${e.message}`)
+      }
+    } finally {
+      setJoining(false)
+    }
   }
   const saveGemini = () => { localStorage.setItem('geminiKey',geminiKey); setGeminiSaved(true); setMsg('Gemini APIキーを保存しました') }
 
