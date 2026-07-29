@@ -369,6 +369,13 @@ export default function Settings({ data, onUpdate, roomCode, onRoomChange }) {
       </div>
 
       {msg&&<div style={{background:'var(--green-l)',color:'var(--green)',borderRadius:'var(--rs)',padding:'10px 14px',fontSize:13,marginTop:10}}>{msg}</div>}
+
+      {/* デバッグ情報（Firebaseプロジェクト確認用） */}
+      <div style={{marginTop:20,padding:'10px 14px',background:'var(--surface2)',borderRadius:'var(--rs)',fontSize:11,color:'var(--text3)',wordBreak:'break-all'}}>
+        <div style={{fontWeight:600,marginBottom:4}}>デバッグ情報</div>
+        <div>Project ID: {import.meta.env.VITE_FIREBASE_PROJECT_ID || '未設定'}</div>
+        <div>Auth Domain: {import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '未設定'}</div>
+      </div>
     </div>
   )
 }
