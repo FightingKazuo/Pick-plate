@@ -1,39 +1,52 @@
-import { initializeApp } from 'firebase/app'
-import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// ========================================================
-// ① Firebase コンソール > プロジェクト設定 > アプリ追加 で
-//    取得した値をここに貼り付けてください
-// ========================================================
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-}
-
-const app = initializeApp(firebaseConfig)
-export const db = getFirestore(app)
-
-// ルームデータの参照
-export const roomRef = (roomCode) => doc(db, 'rooms', roomCode)
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+)
 
 // ルームデータを保存
 export const saveRoom = async (roomCode, data) => {
-  await setDoc(roomRef(roomCode), data, { merge: true })
+  await supabase
+    .from('rooms')
+    .upsert({ code: roomCode, data, updated_at: new Date().toISOString() })
 }
 
 // ルームの存在確認
 export const checkRoom = async (roomCode) => {
-  const snap = await getDoc(roomRef(roomCode))
-  return snap.exists()
+  const { data } = await supabase
+    .from('rooms')
+    .select('code')
+    .eq('code', roomCode)
+    .single()
+  return !!data
 }
 
 // リアルタイム購読
 export const subscribeRoom = (roomCode, callback) => {
-  return onSnapshot(roomRef(roomCode), (snap) => {
-    if (snap.exists()) callback(snap.data())
-  })
+  const fetchAndCallback = async () => {
+    const { data } = await supabase
+      .from('rooms')
+      .select('data')
+      .eq('code', roomCode)
+      .single()
+    if (data) callback(data.data)
+  }
+
+  fetchAndCallback()
+
+  const channel = supabase
+    .channel(`room-${roomCode}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` },
+      (payload) => {
+        if (payload.new && payload.new.data) callback(payload.new.data)
+      }
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
 }
