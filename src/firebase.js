@@ -5,7 +5,7 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-window.__pickplateDebug = { channelStatus: 'not yet', lastPayload: null, subscribeCalls: 0 }
+window.__pickplateDebug = { channelStatus: 'not yet', lastPayload: null, subscribeCalls: 0, lastError: null, url: import.meta.env.VITE_SUPABASE_URL, keyLength: (import.meta.env.VITE_SUPABASE_ANON_KEY || '').length }
 
 export const saveRoom = async (roomCode, data) => {
   await supabase
@@ -46,8 +46,9 @@ export const subscribeRoom = (roomCode, callback) => {
         if (payload.new && payload.new.data) callback(payload.new.data)
       }
     )
-    .subscribe((status) => {
+    .subscribe((status, err) => {
       window.__pickplateDebug.channelStatus = status
+      window.__pickplateDebug.lastError = err ? (err.message || String(err)) : null
     })
 
   return () => {
