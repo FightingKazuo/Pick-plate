@@ -5,14 +5,12 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-console.log('[DEBUG] Supabase client created', import.meta.env.VITE_SUPABASE_URL)
+window.__pickplateDebug = { channelStatus: 'not yet', lastPayload: null, subscribeCalls: 0 }
 
 export const saveRoom = async (roomCode, data) => {
-  console.log('[DEBUG] saveRoom called', roomCode)
-  const result = await supabase
+  await supabase
     .from('rooms')
     .upsert({ code: roomCode, data, updated_at: new Date().toISOString() })
-  console.log('[DEBUG] saveRoom result', result)
 }
 
 export const checkRoom = async (roomCode) => {
@@ -25,15 +23,14 @@ export const checkRoom = async (roomCode) => {
 }
 
 export const subscribeRoom = (roomCode, callback) => {
-  console.log('[DEBUG] subscribeRoom called', roomCode)
+  window.__pickplateDebug.subscribeCalls++
 
   const fetchAndCallback = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('rooms')
       .select('data')
       .eq('code', roomCode)
       .single()
-    console.log('[DEBUG] initial fetch', data, error)
     if (data) callback(data.data)
   }
 
@@ -45,12 +42,12 @@ export const subscribeRoom = (roomCode, callback) => {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` },
       (payload) => {
-        console.log('[DEBUG] realtime payload received', payload)
+        window.__pickplateDebug.lastPayload = payload
         if (payload.new && payload.new.data) callback(payload.new.data)
       }
     )
     .subscribe((status) => {
-      console.log('[DEBUG] channel status', status)
+      window.__pickplateDebug.channelStatus = status
     })
 
   return () => {
