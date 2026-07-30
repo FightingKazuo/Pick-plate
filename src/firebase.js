@@ -5,14 +5,16 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-// ルームデータを保存
+console.log('[DEBUG] Supabase client created', import.meta.env.VITE_SUPABASE_URL)
+
 export const saveRoom = async (roomCode, data) => {
-  await supabase
+  console.log('[DEBUG] saveRoom called', roomCode)
+  const result = await supabase
     .from('rooms')
     .upsert({ code: roomCode, data, updated_at: new Date().toISOString() })
+  console.log('[DEBUG] saveRoom result', result)
 }
 
-// ルームの存在確認
 export const checkRoom = async (roomCode) => {
   const { data } = await supabase
     .from('rooms')
@@ -22,14 +24,16 @@ export const checkRoom = async (roomCode) => {
   return !!data
 }
 
-// リアルタイム購読
 export const subscribeRoom = (roomCode, callback) => {
+  console.log('[DEBUG] subscribeRoom called', roomCode)
+
   const fetchAndCallback = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('rooms')
       .select('data')
       .eq('code', roomCode)
       .single()
+    console.log('[DEBUG] initial fetch', data, error)
     if (data) callback(data.data)
   }
 
@@ -41,10 +45,13 @@ export const subscribeRoom = (roomCode, callback) => {
       'postgres_changes',
       { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` },
       (payload) => {
+        console.log('[DEBUG] realtime payload received', payload)
         if (payload.new && payload.new.data) callback(payload.new.data)
       }
     )
-    .subscribe()
+    .subscribe((status) => {
+      console.log('[DEBUG] channel status', status)
+    })
 
   return () => {
     supabase.removeChannel(channel)
