@@ -5,14 +5,12 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 )
 
-// ルームデータを保存
 export const saveRoom = async (roomCode, data) => {
   await supabase
     .from('rooms')
     .upsert({ code: roomCode, data, updated_at: new Date().toISOString() })
 }
 
-// ルームの存在確認
 export const checkRoom = async (roomCode) => {
   const { data } = await supabase
     .from('rooms')
@@ -22,7 +20,6 @@ export const checkRoom = async (roomCode) => {
   return !!data
 }
 
-// 定期チェック方式(2.5秒おきにポーリング)
 export const subscribeRoom = (roomCode, callback) => {
   let lastUpdatedAt = null
   let stopped = false
@@ -45,5 +42,18 @@ export const subscribeRoom = (roomCode, callback) => {
     }
   }
 
-  check() // 初回即実行
-  const inter
+  check()
+  const interval = setInterval(check, 2000)
+
+  // タブが表示された瞬間・フォーカスされた瞬間に即チェック
+  const onVisible = () => { if (document.visibilityState === 'visible') check() }
+  document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('focus', check)
+
+  return () => {
+    stopped = true
+    clearInterval(interval)
+    document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener('focus', check)
+  }
+}
